@@ -1,0 +1,32 @@
+# .gitignore
+# Ubicación: raíz del proyecto
+
+# Variables de entorno locales
+.env
+.env.local
+
+# Logs
+*.log
+public/logs/
+whatsapp-bot/logs/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PDFs generados dinámicamente (opcionales, pesados)
+public/pdfs/generados/
+
+# Uploads de usuarios
+public/uploads/
+
+# Node modules del bot de WhatsApp
+whatsapp-bot/node_modules/
+
+# Dependencias PHP
+vendor/
+
+# IDEs
+.vscode/
+.idea/

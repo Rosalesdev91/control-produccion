@@ -1,0 +1,8 @@
+{
+  "name": "sialab/control-produccion",
+  "description": "Sistema de Control de Producción - Laboratorio Óptico",
+  "type": "project",
+  "require": {
+    "php": ">=8.1"
+  }
+}

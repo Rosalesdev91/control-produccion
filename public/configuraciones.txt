@@ -1,0 +1,12 @@
+consulta sql tabla empleados para cambiar roles 
+
+UPDATE empleados
+SET rol = 'administrador'
+WHERE codigo_empleado = ''; ---- aqui va el codigo de empleado a cambiar el rol
+
+consulta sql tabla areas para cambiar nombre de area 
+
+UPDATE areas
+SET area = ' ' --- nombre a colocar
+WHERE area = ' '; --- nombre actual en la tabla
+

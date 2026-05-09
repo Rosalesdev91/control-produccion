@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Prueba la API de Alarma</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        button { margin: 5px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; margin-top: 20px; overflow-x: auto; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Prueba de Alarma API</h1>
+    <button onclick="testCheck()">🔍 Test check_alarma</button>
+    <button onclick="testConfirmar()">✅ Test confirmar</button>
+    <button onclick="testDirecto()">📡 Test GET directo</button>
+    <hr>
+    <h3>Resultado:</h3>
+    <pre id="resultado">Esperando acción...</pre>
+
+    <script>
+        // Cambia esta URL si es necesario
+        const API_URL = '/control_produccion/public/alarma_api.php';
+        
+        async function testCheck() {
+            document.getElementById('resultado').textContent = 'Cargando check_alarma...';
+            
+            const fd = new FormData();
+            fd.append('accion', 'check_alarma');
+            
+            try {
+                const res = await fetch(API_URL, { method: 'POST', body: fd });
+                const text = await res.text();
+                document.getElementById('resultado').textContent = text;
+                
+                // Intentar parsear JSON
+                try {
+                    const json = JSON.parse(text);
+                    if (json.ok) {
+                        console.log('✅ check_alarma exitoso:', json);
+                    } else {
+                        console.log('❌ check_alarma error:', json.msg);
+                    }
+                } catch(e) {
+                    console.log('⚠️ No es JSON válido');
+                }
+            } catch(error) {
+                document.getElementById('resultado').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        async function testConfirmar() {
+            document.getElementById('resultado').textContent = 'Cargando confirmar...';
+            
+            const fd = new FormData();
+            fd.append('accion', 'confirmar');
+            fd.append('codigo_empleado', '111576');
+            fd.append('alarma_id', '5');
+            
+            try {
+                const res = await fetch(API_URL, { method: 'POST', body: fd });
+                const text = await res.text();
+                document.getElementById('resultado').textContent = text;
+                
+                try {
+                    const json = JSON.parse(text);
+                    if (json.ok) {
+                        console.log('✅ Confirmación exitosa:', json);
+                    } else {
+                        console.log('❌ Confirmación error:', json.msg);
+                    }
+                } catch(e) {
+                    console.log('⚠️ No es JSON válido');
+                }
+            } catch(error) {
+                document.getElementById('resultado').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        // Prueba GET directo (para ver si el servidor responde)
+        async function testDirecto() {
+            document.getElementById('resultado').textContent = 'Cargando GET directo...';
+            
+            try {
+                const res = await fetch(API_URL + '?accion=check_alarma');
+                const text = await res.text();
+                document.getElementById('resultado').textContent = text;
+            } catch(error) {
+                document.getElementById('resultado').textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

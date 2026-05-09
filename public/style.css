@@ -1,0 +1,176 @@
+        :root {
+            --primary-color: #4e73df;
+            --secondary-color: #858796;
+            --success-color: #1cc88a;
+            --info-color: #36b9cc;
+            --warning-color: #f6c23e;
+            --danger-color: #e74a3b;
+            --light-color: #f8f9fc;
+            --dark-color: #5a5c69;
+        }
+        
+        body {
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8f9fc;
+        }
+        
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: none;
+            border-radius: 0.35rem;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0.5rem 1.5rem 0 rgba(58, 59, 69, 0.2);
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #224abe 100%);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        
+        .nav-pills .nav-link.active {
+            background-color: var(--primary-color);
+        }
+        
+        .nav-pills .nav-link {
+            color: var(--primary-color);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        .sidebar {
+            background-color: white;
+            border-right: 1px solid #e3e6f0;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+        }
+        
+        .sidebar .nav-link {
+            color: #d1d3e2;
+            border-radius: 0.35rem;
+            margin-bottom: 5px;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+        }
+        
+        .sidebar .nav-link:hover, .sidebar .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            color: inherit;
+        }
+        
+        .sidebar .nav-link.active i {
+            color: white;
+        }
+        
+        .sidebar .logo {
+            padding: 1.5rem;
+            color: white;
+            font-weight: 800;
+            font-size: 1.2rem;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.05rem;
+            z-index: 1;
+        }
+        
+        .data-table {
+            font-size: 0.85rem;
+        }
+        
+        .loading-spinner {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+        
+        .tab-content {
+            position: relative;
+            min-height: 300px;
+        }
+        
+        .badge-primary {
+            background-color: var(--primary-color);
+        }
+        
+        .badge-success {
+            background-color: var(--success-color);
+        }
+        
+        .badge-danger {
+            background-color: var(--danger-color);
+        }
+        
+        .badge-warning {
+            background-color: var(--warning-color);
+        }
+        
+        .badge-info {
+            background-color: var(--info-color);
+        }
+        
+        .filter-card {
+            background-color: white;
+            border-radius: 0.35rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1);
+        }
+        
+        .stat-card {
+            border-left: 0.25rem solid;
+        }
+        
+        .stat-card-primary {
+            border-left-color: var(--primary-color);
+        }
+        
+        .stat-card-success {
+            border-left-color: var(--success-color);
+        }
+        
+        .stat-card-danger {
+            border-left-color: var(--danger-color);
+        }
+        
+        .stat-card-warning {
+            border-left-color: var(--warning-color);
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1100;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                height: auto;
+                position: relative;
+            }
+            
+            .chart-container {
+                height: 250px;
+            }
+        }
