@@ -4,6 +4,7 @@
 [phases.setup]
 nixPkgs = [
   "php82",
+  "php82Packages.composer",
   "php82Extensions.mysqli",
   "php82Extensions.pdo",
   "php82Extensions.pdo_mysql",
@@ -15,5 +16,4 @@ nixPkgs = [
 ]
 
 [start]
-# Tu app vive en /public, Railway sirve desde ahí
 cmd = "php -S 0.0.0.0:$PORT -t public public/router.php"
