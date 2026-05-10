@@ -499,34 +499,41 @@ if (isset($conn) && $conn && !$conn->connect_error && ($_SERVER['REQUEST_METHOD'
             limpiar_resultados($conn);
         }
         
-        // --- Login de empleado en producción (consultar_empleado en registro.php) ---
-        if (isset($_POST['consultar_empleado']) && !empty($_POST['codigo_empleado']) && basename($_SERVER['PHP_SELF']) === 'registro.php') {
-            // Verificar si el empleado existe para saber si fue exitoso o no
-            $codigo = $_POST['codigo_empleado'];
-            $stmt_check = $conn->prepare("SELECT nombre_empleado FROM empleados WHERE codigo_empleado = ?");
-            $stmt_check->bind_param("s", $codigo);
-            $stmt_check->execute();
-            $stmt_check->bind_result($nombre_encontrado);
-            $existe = $stmt_check->fetch();
-            $stmt_check->close();
-            limpiar_resultados($conn);
-            
-            if ($existe) {
-                // Login exitoso - usar el NOMBRE del empleado
-                registrar_actividad($conn, 'login', $nombre_encontrado, "🔐 Inició sesión exitosamente en el sistema de producción | Código: {$codigo}", $ip);
-            } else {
-                // Login fallido - mostrar código
-                registrar_actividad($conn, 'login', $codigo, "❌ Intento fallido de inicio de sesión con código: {$codigo}", $ip);
-            }
-            limpiar_resultados($conn);
-        }
+// --- Login de empleado en producción (consultar_empleado en registro.php) ---
+if (isset($_POST['consultar_empleado']) && !empty($_POST['codigo_empleado']) && basename($_SERVER['PHP_SELF']) === 'registro.php') {
+    // Verificar si el empleado existe para saber si fue exitoso o no
+    $codigo = $_POST['codigo_empleado'];
+    
+    // Usar query() en lugar de prepare() para evitar errores
+    $codigo_esc = $conn->real_escape_string($codigo);
+    $res = $conn->query("SELECT nombre_empleado FROM empleados WHERE codigo_empleado = '$codigo_esc'");
+    
+    $existe = false;
+    $nombre_encontrado = null;
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        $nombre_encontrado = $row['nombre_empleado'];
+        $existe = true;
+        $res->free();
+    }
+    limpiar_resultados($conn);
+    
+    if ($existe) {
+        // Login exitoso - usar el NOMBRE del empleado
+        registrar_actividad($conn, 'login', $nombre_encontrado, "🔐 Inició sesión exitosamente en el sistema de producción | Código: {$codigo}", $ip);
+    } else {
+        // Login fallido - mostrar código
+        registrar_actividad($conn, 'login', $codigo, "❌ Intento fallido de inicio de sesión con código: {$codigo}", $ip);
+    }
+    limpiar_resultados($conn);
+}
         
-        // --- Login de técnico en tareas (consultar_empleado en login_tareas.php) ---
-        if (isset($_POST['consultar_empleado']) && !empty($_POST['codigo_empleado']) && basename($_SERVER['PHP_SELF']) === 'login_tareas.php') {
-            $codigo = $_POST['codigo_empleado'];
-            registrar_actividad($conn, 'login', $codigo, "🔐 Intento de inicio de sesión en sistema de tareas | Código: {$codigo}", $ip);
-            limpiar_resultados($conn);
-        }
+// --- Login de técnico en tareas (consultar_empleado en login_tareas.php) ---
+if (isset($_POST['consultar_empleado']) && !empty($_POST['codigo_empleado']) && basename($_SERVER['PHP_SELF']) === 'login_tareas.php') {
+    $codigo = $_POST['codigo_empleado'];
+    registrar_actividad($conn, 'login', $codigo, "🔐 Intento de inicio de sesión en sistema de tareas | Código: {$codigo}", $ip);
+    limpiar_resultados($conn);
+}
         
         // --- Login de picking (consultar_empleado en registro_picking.php) ---
         if (isset($_POST['consultar_empleado']) && !empty($_POST['codigo_empleado']) && basename($_SERVER['PHP_SELF']) === 'registro_picking.php') {
