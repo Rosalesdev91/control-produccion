@@ -62,7 +62,7 @@ class LoginSystem {
     }
 
     public function validarCodigoQuiebras($codigo) {
-        require_once '../config/database.php';
+        require_once dirname(__DIR__) . '/config/database.php';
 
         $stmt = $conn->prepare("SELECT id, nombre_empleado, codigo_empleado, rol FROM empleados WHERE codigo_empleado = ?");
         $stmt->bind_param("s", $codigo);
@@ -168,7 +168,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
     } else {
         $validacion = $login->validarAcceso($area);
         if ($validacion['success']) {
-            require_once '../config/database.php';
+            require_once dirname(__DIR__) . '/config/database.php';
             $login->iniciarSesion($area, $conn);
             $mensaje_exito = "Acceso autorizado. Redirigiendo…";
             echo "<script>

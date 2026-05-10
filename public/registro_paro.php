@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 require_once '../includes/pdf_generator.php';
 include_once "C:/xampp/htdocs/control_produccion/whatsapp-bot/whatsapp.php";
 require_once 'auto_audit_empleados.php';

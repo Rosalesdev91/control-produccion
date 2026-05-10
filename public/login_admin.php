@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $codigo = trim($_POST['codigo'] ?? '');
 
     if ($area && $codigo) {
-        require_once '../config/database.php';
+        require_once dirname(__DIR__) . '/config/database.php';
 
         $stmt = $conn->prepare("SELECT id, nombre_empleado, codigo_empleado, rol FROM empleados WHERE codigo_empleado = ? AND rol = 'administrador' LIMIT 1");
         $stmt->bind_param("s", $codigo);

@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 require_once 'registrar_actividad.php';
 
 if (!isset($_SESSION['empleado']) || $_SESSION['rol'] !== 'administrador') {
