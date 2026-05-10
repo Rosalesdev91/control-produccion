@@ -2,18 +2,23 @@
 session_start();
 require_once dirname(__DIR__) . '/config/database.php';
 require_once '../includes/pdf_generator.php';
-include_once "C:/xampp/htdocs/control_produccion/whatsapp-bot/whatsapp.php";
 require_once 'auto_audit_empleados.php';
 require_once 'registrar_actividad.php';
 
+// Función helper para manejar prepares de forma segura
+function safePrepare($conn, $sql, $errorMsg = "Error en la consulta") {
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        error_log("SQL Error: " . $conn->error);
+        $_SESSION['mensaje_error'] = $errorMsg . ". Contacte a soporte.";
+        return false;
+    }
+    return $stmt;
+}
 
 // Configuración inicial
 $conn->set_charset("utf8");
 date_default_timezone_set('America/Costa_Rica');
-// Al inicio, después de session_start(), puedes definir manualmente para pruebas:
-$_SESSION['es_supervisor'] = true; // Solo para pruebas, luego lo quitas
-// Al inicio, después de session_start(), puedes definir manualmente para pruebas:
-$_SESSION['rol'] = true; // Solo para pruebas, luego lo quitas
 
 // Inicialización de variables
 $mensaje = '';
@@ -49,19 +54,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $codigoEmpleado = trim($_POST['codigo_empleado'] ?? '');
         
         if (!empty($codigoEmpleado)) {
-            $stmt = $conn->prepare("SELECT nombre_empleado FROM empleados WHERE codigo_empleado = ?");
-            $stmt->bind_param("s", $codigoEmpleado);
+            $codigo_esc = $conn->real_escape_string($codigoEmpleado);
+            $res = $conn->query("SELECT nombre_empleado FROM empleados WHERE codigo_empleado = '$codigo_esc'");
             
-            if ($stmt->execute() && $stmt->bind_result($nombre) && $stmt->fetch()) {
+            if ($res && $res->num_rows > 0) {
+                $row = $res->fetch_assoc();
+                $nombre = $row['nombre_empleado'];
                 $_SESSION['codigoEmpleado'] = $codigoEmpleado;
                 $_SESSION['nombreEmpleado'] = $nombre;
                 $_SESSION['empleado'] = $nombre;
+                $res->free();
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
             } else {
                 $mensaje = "Empleado no encontrado con el código: " . htmlspecialchars($codigoEmpleado);
             }
-            $stmt->close();
+            limpiar_resultados($conn);
         }
     }
     
@@ -86,92 +94,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    // Crear solicitud de paro (EQUIPO OPCIONAL + SIN ENLACE EN WHATSAPP)
+    // Crear solicitud de paro
     elseif (isset($_POST['crear_solicitud'])) {
         $area        = $_SESSION['area_seleccionada'] ?? '';
-        $equipo      = $_SESSION['equipo_seleccionado'] ?? '';   // Puede estar vacío
+        $equipo      = $_SESSION['equipo_seleccionado'] ?? '';
         $motivo      = trim($_POST['motivo_solicitud'] ?? '');
         $tipo_paro   = trim($_POST['tipo_paro'] ?? '');
         $empleado    = $_SESSION['nombreEmpleado'] ?? '';
 
-        // Validación básica
         if (empty($area) || empty($motivo) || empty($tipo_paro) || empty($empleado)) {
             $_SESSION['mensaje_error'] = "Área, tipo de paro, motivo y empleado son obligatorios.";
         } else {
-
-            // VALIDAR DUPLICADOS (área + equipo o solo área)
+            // VALIDAR DUPLICADOS
             if (!empty($equipo)) {
                 $sql_check = "SELECT id FROM solicitudes_paro 
                               WHERE empleado = ? AND area = ? AND equipo = ? 
                               AND estado IN ('pendiente', 'iniciada')";
-                $params    = "sss";
-                $values    = [$empleado, $area, $equipo];
+                $stmt_check = safePrepare($conn, $sql_check, "Error al verificar duplicados");
+                if ($stmt_check) {
+                    $stmt_check->bind_param("sss", $empleado, $area, $equipo);
+                    $stmt_check->execute();
+                    $stmt_check->store_result();
+                    $existe = $stmt_check->num_rows > 0;
+                    $stmt_check->close();
+                } else {
+                    $existe = false;
+                }
             } else {
                 $sql_check = "SELECT id FROM solicitudes_paro 
                               WHERE empleado = ? AND area = ? AND (equipo = '' OR equipo IS NULL)
                               AND estado IN ('pendiente', 'iniciada')";
-                $params    = "ss";
-                $values    = [$empleado, $area];
+                $stmt_check = safePrepare($conn, $sql_check, "Error al verificar duplicados");
+                if ($stmt_check) {
+                    $stmt_check->bind_param("ss", $empleado, $area);
+                    $stmt_check->execute();
+                    $stmt_check->store_result();
+                    $existe = $stmt_check->num_rows > 0;
+                    $stmt_check->close();
+                } else {
+                    $existe = false;
+                }
             }
 
-            $stmt_check = $conn->prepare($sql_check);
-            $stmt_check->bind_param($params, ...$values);
-            $stmt_check->execute();
-            $stmt_check->store_result();
-
-            if ($stmt_check->num_rows > 0) {
+            if ($existe) {
                 $_SESSION['mensaje_error'] = "Ya existe una solicitud pendiente o iniciada para " .
                     (!empty($equipo) ? "el equipo '$equipo' en el área '$area'" : "el área '$area'");
             } else {
-                // CREAR SOLICITUD
                 $fecha_solicitud = date('Y-m-d H:i:s');
-
-                $stmt = $conn->prepare("INSERT INTO solicitudes_paro 
+                $sql_insert = "INSERT INTO solicitudes_paro 
                     (empleado, area, equipo, motivo, tipo_paro, fecha_solicitud, estado) 
-                    VALUES (?, ?, ?, ?, ?, ?, 'pendiente')");
-                $stmt->bind_param("ssssss", $empleado, $area, $equipo, $motivo, $tipo_paro, $fecha_solicitud);
-
-                if ($stmt->execute()) {
+                    VALUES (?, ?, ?, ?, ?, ?, 'pendiente')";
+                $stmt = safePrepare($conn, $sql_insert, "Error al crear solicitud");
+                
+                if ($stmt && $stmt->bind_param("ssssss", $empleado, $area, $equipo, $motivo, $tipo_paro, $fecha_solicitud) && $stmt->execute()) {
                     $id_solicitud = $conn->insert_id;
                     $_SESSION['mensaje_exito'] = "Solicitud de paro creada correctamente. ID: $id_solicitud";
 
-                    // AUTO-INICIAR "Sin WIP" y "Servidor"
                     if ($tipo_paro === 'Sin WIP' || $tipo_paro === 'Servidor') {
                         $fecha_inicio = date('Y-m-d H:i:s');
-                        $stmt_pp = $conn->prepare("INSERT INTO paro_produccion 
+                        $sql_pp = "INSERT INTO paro_produccion 
                             (id_solicitud, area, equipo, empleado, fecha_inicio, activo, tipo_paro) 
-                            VALUES (?, ?, ?, ?, ?, 1, ?)");
-                        $stmt_pp->bind_param("isssss", $id_solicitud, $area, $equipo, $empleado, $fecha_inicio, $tipo_paro);
-                        $stmt_pp->execute();
-                        $stmt_pp->close();
-
+                            VALUES (?, ?, ?, ?, ?, 1, ?)";
+                        $stmt_pp = safePrepare($conn, $sql_pp, "Error al auto-iniciar paro");
+                        if ($stmt_pp && $stmt_pp->bind_param("isssss", $id_solicitud, $area, $equipo, $empleado, $fecha_inicio, $tipo_paro)) {
+                            $stmt_pp->execute();
+                            $stmt_pp->close();
+                        }
                         $conn->query("UPDATE solicitudes_paro SET estado = 'iniciada' WHERE id = $id_solicitud");
                     }
-                    // NOTIFICACIÓN WHATSAPP (sin enlace) - CON ICONOS
-                    else {
-                        $equipoTexto = !empty($equipo) ? $equipo : 'Área completa';
-                        $mensajeWhatsApp = 
-                            "⚠️ *ALERTA: SOLICITUD DE PARO REGISTRADA* ⚠️\n\n" .
-                            "🔢 *NÚMERO DE SOLICITUD:* `$id_solicitud`\n" .
-                            "👤 *EMPLEADO:* $empleado\n" .
-                            "🏭 *ÁREA:* $area\n" .
-                            "🔧 *EQUIPO:* $equipoTexto\n" .
-                            "⏹️ *TIPO DE PARO:* $tipo_paro\n" .
-                            "❗ *MOTIVO:* $motivo\n" .
-                            "📅 *FECHA Y HORA:* $fecha_solicitud\n\n" .
-                            "🛑 _Favor de atender con urgencia_";
-
-                        enviarWhatsAppATodos($mensajeWhatsApp);
-                    }
-
-                    // Limpiar selección
+                    
                     unset($_SESSION['area_seleccionada'], $_SESSION['equipo_seleccionado']);
                 }
-                $stmt->close();
+                if ($stmt) $stmt->close();
             }
-            $stmt_check->close();
         }
-
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
     }
@@ -181,33 +177,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id_solicitud = (int)($_POST['id_solicitud'] ?? 0);
         
         if ($id_solicitud > 0 && !empty($nombreEmpleado)) {
-            $stmt_check = $conn->prepare("SELECT sp.id, sp.tipo_paro, pp.activo, pp.id AS pp_id 
-                                         FROM solicitudes_paro sp 
-                                         JOIN paro_produccion pp ON sp.id = pp.id_solicitud 
-                                         WHERE sp.id = ? AND sp.empleado = ? AND sp.tipo_paro IN ('Sin WIP', 'Servidor') AND pp.activo = 1");
-            $stmt_check->bind_param("is", $id_solicitud, $nombreEmpleado);
-            $stmt_check->execute();
-            $result_check = $stmt_check->get_result();
-            
-            if ($row = $result_check->fetch_assoc()) {
-                $fecha_fin = date('Y-m-d H:i:s');
-                $stmt_fin = $conn->prepare("UPDATE paro_produccion SET fecha_fin = ?, activo = 0 WHERE id = ?");
-                $stmt_fin->bind_param("si", $fecha_fin, $row['pp_id']);
+            $sql_check = "SELECT sp.id, sp.tipo_paro, pp.activo, pp.id AS pp_id 
+                         FROM solicitudes_paro sp 
+                         JOIN paro_produccion pp ON sp.id = pp.id_solicitud 
+                         WHERE sp.id = ? AND sp.empleado = ? AND sp.tipo_paro IN ('Sin WIP', 'Servidor') AND pp.activo = 1";
+            $stmt_check = safePrepare($conn, $sql_check, "Error al verificar paro");
+            if ($stmt_check) {
+                $stmt_check->bind_param("is", $id_solicitud, $nombreEmpleado);
+                $stmt_check->execute();
+                $result_check = $stmt_check->get_result();
                 
-                if ($stmt_fin->execute()) {
-                    $stmt_est = $conn->prepare("UPDATE solicitudes_paro SET estado = 'finalizada' WHERE id = ?");
-                    $stmt_est->bind_param("i", $id_solicitud);
-                    $stmt_est->execute();
-                    $stmt_est->close();
-                    $_SESSION['mensaje_exito'] = "Paro finalizado correctamente.";
+                if ($row = $result_check->fetch_assoc()) {
+                    $fecha_fin = date('Y-m-d H:i:s');
+                    $sql_fin = "UPDATE paro_produccion SET fecha_fin = ?, activo = 0 WHERE id = ?";
+                    $stmt_fin = safePrepare($conn, $sql_fin, "Error al finalizar paro");
+                    if ($stmt_fin && $stmt_fin->bind_param("si", $fecha_fin, $row['pp_id']) && $stmt_fin->execute()) {
+                        $sql_est = "UPDATE solicitudes_paro SET estado = 'finalizada' WHERE id = ?";
+                        $stmt_est = safePrepare($conn, $sql_est, "Error al actualizar estado");
+                        if ($stmt_est) {
+                            $stmt_est->bind_param("i", $id_solicitud);
+                            $stmt_est->execute();
+                            $stmt_est->close();
+                        }
+                        $_SESSION['mensaje_exito'] = "Paro finalizado correctamente.";
+                    } else {
+                        $_SESSION['mensaje_error'] = "Error al finalizar el paro.";
+                    }
+                    if ($stmt_fin) $stmt_fin->close();
                 } else {
-                    $_SESSION['mensaje_error'] = "Error al finalizar el paro: " . $conn->error;
+                    $_SESSION['mensaje_error'] = "No se puede finalizar este paro. Verifique que sea 'Sin WIP' o 'Servidor' y esté activo.";
                 }
-                $stmt_fin->close();
-            } else {
-                $_SESSION['mensaje_error'] = "No se puede finalizar este paro. Verifique que sea 'Sin WIP' o 'Servidor' y esté activo.";
+                $stmt_check->close();
             }
-            $stmt_check->close();
         }
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
@@ -216,42 +217,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Forzar finalización de paro (solo para supervisores)
     elseif (isset($_POST['forzar_finalizacion_paro'])) {
         $id_paro = (int)($_POST['id_paro_forzar'] ?? 0);
-        $es_supervisor = $_SESSION['rol'] === 'admin' || $_SESSION['es_supervisor'] ?? false;
+        $es_supervisor = ($_SESSION['rol'] ?? '') === 'admin' || ($_SESSION['es_supervisor'] ?? false);
         
         if ($es_supervisor && $id_paro > 0) {
-            // Verificar que el paro existe y está activo
-            $stmt_check = $conn->prepare("SELECT id_solicitud FROM paro_produccion WHERE id = ? AND activo = 1");
-            $stmt_check->bind_param("i", $id_paro);
-            $stmt_check->execute();
-            $result_check = $stmt_check->get_result();
-            
-            if ($row = $result_check->fetch_assoc()) {
-                $fecha_fin = date('Y-m-d H:i:s');
+            $sql_check = "SELECT id_solicitud FROM paro_produccion WHERE id = ? AND activo = 1";
+            $stmt_check = safePrepare($conn, $sql_check, "Error al verificar paro");
+            if ($stmt_check) {
+                $stmt_check->bind_param("i", $id_paro);
+                $stmt_check->execute();
+                $result_check = $stmt_check->get_result();
                 
-                // Finalizar el paro
-                $stmt_fin = $conn->prepare("UPDATE paro_produccion SET fecha_fin = ?, activo = 0 WHERE id = ?");
-                $stmt_fin->bind_param("si", $fecha_fin, $id_paro);
-                
-                if ($stmt_fin->execute()) {
-                    // Actualizar estado de la solicitud
-                    $stmt_est = $conn->prepare("UPDATE solicitudes_paro SET estado = 'finalizada' WHERE id = ?");
-                    $stmt_est->bind_param("i", $row['id_solicitud']);
-                    $stmt_est->execute();
-                    $stmt_est->close();
-                    
-                    $_SESSION['mensaje_exito'] = "Paro finalizado forzosamente por supervisor. Ahora puedes crear una nueva solicitud.";
+                if ($row = $result_check->fetch_assoc()) {
+                    $fecha_fin = date('Y-m-d H:i:s');
+                    $sql_fin = "UPDATE paro_produccion SET fecha_fin = ?, activo = 0 WHERE id = ?";
+                    $stmt_fin = safePrepare($conn, $sql_fin, "Error al finalizar paro");
+                    if ($stmt_fin && $stmt_fin->bind_param("si", $fecha_fin, $id_paro) && $stmt_fin->execute()) {
+                        $sql_est = "UPDATE solicitudes_paro SET estado = 'finalizada' WHERE id = ?";
+                        $stmt_est = safePrepare($conn, $sql_est, "Error al actualizar estado");
+                        if ($stmt_est) {
+                            $stmt_est->bind_param("i", $row['id_solicitud']);
+                            $stmt_est->execute();
+                            $stmt_est->close();
+                        }
+                        $_SESSION['mensaje_exito'] = "Paro finalizado forzosamente por supervisor.";
+                    } else {
+                        $_SESSION['mensaje_error'] = "Error al forzar la finalización.";
+                    }
+                    if ($stmt_fin) $stmt_fin->close();
                 } else {
-                    $_SESSION['mensaje_error'] = "Error al forzar la finalización del paro.";
+                    $_SESSION['mensaje_error'] = "No se encontró un paro activo con el ID especificado.";
                 }
-                $stmt_fin->close();
-            } else {
-                $_SESSION['mensaje_error'] = "No se encontró un paro activo con el ID especificado.";
+                $stmt_check->close();
             }
-            $stmt_check->close();
         } else {
             $_SESSION['mensaje_error'] = "No tienes permisos para realizar esta acción.";
         }
-        
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
     }
@@ -261,26 +261,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id_solicitud = (int)($_POST['id_solicitud'] ?? 0);
         
         if ($id_solicitud > 0) {
-            $stmt = $conn->prepare("SELECT sp.*, pp.fecha_inicio, pp.fecha_fin, t.nombre_tecnico 
-                                  FROM solicitudes_paro sp 
-                                  LEFT JOIN paro_produccion pp ON sp.id = pp.id_solicitud
-                                  LEFT JOIN tecnicos t ON pp.id_tecnico = t.id
-                                  WHERE sp.id = ? AND sp.empleado = ?");
-            $stmt->bind_param("is", $id_solicitud, $nombreEmpleado);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            if ($solicitud = $result->fetch_assoc()) {
-                try {
-                    generarPDFSolicitud($solicitud);
-                    exit;
-                } catch (Exception $e) {
-                    $_SESSION['mensaje_error'] = "Error al generar PDF: " . $e->getMessage();
+            $sql = "SELECT sp.*, pp.fecha_inicio, pp.fecha_fin, t.nombre_tecnico 
+                  FROM solicitudes_paro sp 
+                  LEFT JOIN paro_produccion pp ON sp.id = pp.id_solicitud
+                  LEFT JOIN tecnicos t ON pp.id_tecnico = t.id
+                  WHERE sp.id = ? AND sp.empleado = ?";
+            $stmt = safePrepare($conn, $sql, "Error al obtener datos");
+            if ($stmt) {
+                $stmt->bind_param("is", $id_solicitud, $nombreEmpleado);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                
+                if ($solicitud = $result->fetch_assoc()) {
+                    try {
+                        generarPDFSolicitud($solicitud);
+                        exit;
+                    } catch (Exception $e) {
+                        $_SESSION['mensaje_error'] = "Error al generar PDF: " . $e->getMessage();
+                    }
+                } else {
+                    $_SESSION['mensaje_error'] = "Solicitud no encontrada.";
                 }
-            } else {
-                $_SESSION['mensaje_error'] = "Solicitud no encontrada.";
+                $stmt->close();
             }
-            $stmt->close();
         }
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
@@ -289,10 +292,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Listado de áreas y equipos
 $AREAS = [];
-$equipos_por_area = [];  // <--- NUEVO: equipos agrupados por área
+$equipos_por_area = [];
 $TIPOS_PARO = [];
 
-// === ÁREAS ===
 $result_areas = $conn->query("SELECT area FROM areas WHERE activo = 1 ORDER BY area ASC");
 if ($result_areas) {
     while ($row = $result_areas->fetch_assoc()) {
@@ -301,7 +303,6 @@ if ($result_areas) {
     $result_areas->free();
 }
 
-// === Tipos de paro ===
 $result_tipos_paro = $conn->query("SELECT nombre FROM tipos_paro ORDER BY nombre ASC");
 if ($result_tipos_paro) {
     while ($row = $result_tipos_paro->fetch_assoc()) {
@@ -310,7 +311,6 @@ if ($result_tipos_paro) {
     $result_tipos_paro->free();
 }
 
-// === EQUIPOS POR ÁREA (usando area_id) ===
 $result = $conn->query("
     SELECT e.nombre_equipo, a.area 
     FROM equipos e
@@ -326,119 +326,45 @@ if ($result) {
     $result->free();
 }
 
-// Historial de solicitudes y paros para el empleado actual
+// Historial de solicitudes para el empleado actual
 if (!empty($nombreEmpleado)) {
-    // Solicitudes pendientes e iniciadas
-    $query_solicitudes = "
-        SELECT 
-            sp.id,
-            sp.area,
-            sp.equipo,
-            sp.motivo,
-            sp.tipo_paro,
-            sp.fecha_solicitud,
-            sp.estado,
-            pp.comentario_final,
-            pp.id                AS paro_id,
-            pp.fecha_inicio,
-            pp.fecha_fin,
-            pp.activo,
-            t.nombre_tecnico,
-            TIMESTAMPDIFF(MINUTE, sp.fecha_solicitud, COALESCE(pp.fecha_inicio, NOW())) AS tiempo_respuesta,
-            CASE 
-                WHEN pp.fecha_inicio IS NOT NULL AND pp.fecha_fin IS NOT NULL THEN
-                    TIMESTAMPDIFF(MINUTE, pp.fecha_inicio, pp.fecha_fin)
-                WHEN pp.fecha_inicio IS NOT NULL AND pp.activo = 1 THEN
-                    TIMESTAMPDIFF(MINUTE, pp.fecha_inicio, NOW())
-                ELSE NULL
-            END AS duracion_paro
-        FROM solicitudes_paro sp
-        LEFT JOIN paro_produccion pp ON sp.id = pp.id_solicitud
-        LEFT JOIN tecnicos t        ON pp.id_tecnico = t.id
-        WHERE sp.empleado = ?
-          AND sp.estado IN ('pendiente', 'iniciada')
-        ORDER BY sp.fecha_solicitud DESC
-        LIMIT 10
-    ";
-    $stmt = $conn->prepare($query_solicitudes);
+    $query_solicitudes = "SELECT sp.id, sp.area, sp.equipo, sp.motivo, sp.tipo_paro, sp.fecha_solicitud, sp.estado, pp.comentario_final, pp.id AS paro_id, pp.fecha_inicio, pp.fecha_fin, pp.activo, t.nombre_tecnico, TIMESTAMPDIFF(MINUTE, sp.fecha_solicitud, COALESCE(pp.fecha_inicio, NOW())) AS tiempo_respuesta, CASE WHEN pp.fecha_inicio IS NOT NULL AND pp.fecha_fin IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, pp.fecha_inicio, pp.fecha_fin) WHEN pp.fecha_inicio IS NOT NULL AND pp.activo = 1 THEN TIMESTAMPDIFF(MINUTE, pp.fecha_inicio, NOW()) ELSE NULL END AS duracion_paro FROM solicitudes_paro sp LEFT JOIN paro_produccion pp ON sp.id = pp.id_solicitud LEFT JOIN tecnicos t ON pp.id_tecnico = t.id WHERE sp.empleado = ? AND sp.estado IN ('pendiente', 'iniciada') ORDER BY sp.fecha_solicitud DESC LIMIT 10";
+    $stmt = safePrepare($conn, $query_solicitudes, "Error al cargar solicitudes");
     if ($stmt && $stmt->bind_param("s", $nombreEmpleado) && $stmt->execute()) {
         $resultado = $stmt->get_result();
         while ($row = $resultado->fetch_assoc()) {
             $row['fecha_solicitud_formatted'] = date('d-m-Y H:i:s', strtotime($row['fecha_solicitud']));
-            $row['fecha_inicio_formatted'] = $row['fecha_inicio'] ? 
-                date('d-m-Y H:i:s', strtotime($row['fecha_inicio'])) : '-';
-            $row['fecha_fin_formatted'] = $row['fecha_fin'] ? 
-                date('d-m-Y H:i:s', strtotime($row['fecha_fin'])) : '-';
-            $row['tiempo_respuesta_formatted'] = $row['tiempo_respuesta'] !== null ? 
-                round($row['tiempo_respuesta'], 1) . ' min' : '-';
-            $row['duracion_paro_formatted'] = $row['duracion_paro'] !== null ? 
-                round($row['duracion_paro'], 1) . ' min' : '-';
+            $row['fecha_inicio_formatted'] = $row['fecha_inicio'] ? date('d-m-Y H:i:s', strtotime($row['fecha_inicio'])) : '-';
+            $row['fecha_fin_formatted'] = $row['fecha_fin'] ? date('d-m-Y H:i:s', strtotime($row['fecha_fin'])) : '-';
+            $row['tiempo_respuesta_formatted'] = $row['tiempo_respuesta'] !== null ? round($row['tiempo_respuesta'], 1) . ' min' : '-';
+            $row['duracion_paro_formatted'] = $row['duracion_paro'] !== null ? round($row['duracion_paro'], 1) . ' min' : '-';
             $solicitudes_pendientes[] = $row;
         }
         $stmt->close();
     }
     
-    // Historial completo con filtro de rango de fechas (últimos 30 días por defecto)
     $fecha_desde = $_GET['fecha_desde'] ?? date('Y-m-d', strtotime('-30 days'));
     $fecha_hasta = $_GET['fecha_hasta'] ?? date('Y-m-d');
 
-    $query_historial = "
-        SELECT 
-            sp.id,
-            sp.area,
-            sp.equipo,
-            sp.motivo,
-            sp.tipo_paro,
-            sp.fecha_solicitud,
-            sp.estado,
-            sp.motivo_rechazo,
-            pp.comentario_final,
-            pp.fecha_inicio,
-            pp.fecha_fin,
-            t.nombre_tecnico,
-            TIMESTAMPDIFF(MINUTE, sp.fecha_solicitud, pp.fecha_inicio) AS tiempo_respuesta,
-            CASE 
-                WHEN pp.fecha_inicio IS NOT NULL AND pp.fecha_fin IS NOT NULL THEN
-                    TIMESTAMPDIFF(MINUTE, pp.fecha_inicio, pp.fecha_fin)
-                ELSE NULL
-            END AS duracion_paro
-        FROM solicitudes_paro sp
-        LEFT JOIN paro_produccion pp ON sp.id = pp.id_solicitud
-        LEFT JOIN tecnicos t        ON pp.id_tecnico = t.id
-        WHERE sp.empleado = ?
-          AND DATE(sp.fecha_solicitud) BETWEEN ? AND ?
-        ORDER BY sp.fecha_solicitud DESC
-        LIMIT 100
-    ";
-    $stmt = $conn->prepare($query_historial);
+    $query_historial = "SELECT sp.id, sp.area, sp.equipo, sp.motivo, sp.tipo_paro, sp.fecha_solicitud, sp.estado, sp.motivo_rechazo, pp.comentario_final, pp.fecha_inicio, pp.fecha_fin, t.nombre_tecnico, TIMESTAMPDIFF(MINUTE, sp.fecha_solicitud, pp.fecha_inicio) AS tiempo_respuesta, CASE WHEN pp.fecha_inicio IS NOT NULL AND pp.fecha_fin IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, pp.fecha_inicio, pp.fecha_fin) ELSE NULL END AS duracion_paro FROM solicitudes_paro sp LEFT JOIN paro_produccion pp ON sp.id = pp.id_solicitud LEFT JOIN tecnicos t ON pp.id_tecnico = t.id WHERE sp.empleado = ? AND DATE(sp.fecha_solicitud) BETWEEN ? AND ? ORDER BY sp.fecha_solicitud DESC LIMIT 100";
+    $stmt = safePrepare($conn, $query_historial, "Error al cargar historial");
     if ($stmt && $stmt->bind_param("sss", $nombreEmpleado, $fecha_desde, $fecha_hasta) && $stmt->execute()) {
         $resultado = $stmt->get_result();
         while ($row = $resultado->fetch_assoc()) {
             $row['fecha_solicitud_formatted'] = date('d-m-Y H:i:s', strtotime($row['fecha_solicitud']));
-            $row['fecha_inicio_formatted'] = $row['fecha_inicio'] ? 
-                date('d-m-Y H:i:s', strtotime($row['fecha_inicio'])) : '-';
-            $row['fecha_fin_formatted'] = $row['fecha_fin'] ? 
-                date('d-m-Y H:i:s', strtotime($row['fecha_fin'])) : '-';
-            $row['tiempo_respuesta_formatted'] = $row['tiempo_respuesta'] !== null ? 
-                round($row['tiempo_respuesta'], 1) . ' min' : '-';
-            $row['duracion_paro_formatted'] = $row['duracion_paro'] !== null ? 
-                round($row['duracion_paro'], 1) . ' min' : '-';
+            $row['fecha_inicio_formatted'] = $row['fecha_inicio'] ? date('d-m-Y H:i:s', strtotime($row['fecha_inicio'])) : '-';
+            $row['fecha_fin_formatted'] = $row['fecha_fin'] ? date('d-m-Y H:i:s', strtotime($row['fecha_fin'])) : '-';
+            $row['tiempo_respuesta_formatted'] = $row['tiempo_respuesta'] !== null ? round($row['tiempo_respuesta'], 1) . ' min' : '-';
+            $row['duracion_paro_formatted'] = $row['duracion_paro'] !== null ? round($row['duracion_paro'], 1) . ' min' : '-';
             $historial[] = $row;
         }
         $stmt->close();
     }
     
-    // Último motivo de solicitud
     if (!empty($area_seleccionada) && !empty($equipo_seleccionado)) {
-        $stmt = $conn->prepare("
-            SELECT motivo 
-            FROM solicitudes_paro 
-            WHERE empleado = ? AND area = ? AND equipo = ? 
-            ORDER BY fecha_solicitud DESC 
-            LIMIT 1
-        ");
-        if ($stmt && $stmt->bind_param("sss", $nombreEmpleado, $area_seleccionada, $equipo_seleccionado)) {
-            $stmt->execute();
+        $sql_motivo = "SELECT motivo FROM solicitudes_paro WHERE empleado = ? AND area = ? AND equipo = ? ORDER BY fecha_solicitud DESC LIMIT 1";
+        $stmt = safePrepare($conn, $sql_motivo, "Error al obtener motivo");
+        if ($stmt && $stmt->bind_param("sss", $nombreEmpleado, $area_seleccionada, $equipo_seleccionado) && $stmt->execute()) {
             $stmt->bind_result($motivo_reciente);
             if ($stmt->fetch()) {
                 $ultimo_motivo_solicitud = $motivo_reciente;
@@ -446,15 +372,9 @@ if (!empty($nombreEmpleado)) {
             $stmt->close();
         }
 
-        // Verificar paro activo de otro empleado
-        $stmt = $conn->prepare("
-            SELECT id, empleado, motivo, fecha_inicio 
-            FROM paro_produccion 
-            WHERE area = ? AND equipo = ? AND activo = 1 AND empleado != ?
-            LIMIT 1
-        ");
-        if ($stmt && $stmt->bind_param("sss", $area_seleccionada, $equipo_seleccionado, $nombreEmpleado)) {
-            $stmt->execute();
+        $sql_paro = "SELECT id, empleado, motivo, fecha_inicio FROM paro_produccion WHERE area = ? AND equipo = ? AND activo = 1 AND empleado != ? LIMIT 1";
+        $stmt = safePrepare($conn, $sql_paro, "Error al verificar paro activo");
+        if ($stmt && $stmt->bind_param("sss", $area_seleccionada, $equipo_seleccionado, $nombreEmpleado) && $stmt->execute()) {
             $result = $stmt->get_result();
             if ($row = $result->fetch_assoc()) {
                 $paro_activo_otro_empleado = $row;
@@ -1018,7 +938,6 @@ if (!empty($nombreEmpleado)) {
                     </form>
                 </div>
 
-                <!-- Estadísticas mini -->
                 <div class="stats-mini">
                     <div class="stat-mini">
                         <div class="stat-mini-number"><?= count($solicitudes_pendientes) ?></div>
@@ -1058,8 +977,7 @@ if (!empty($nombreEmpleado)) {
                             </div>
                             
                             <?php 
-                            // Verificar si el usuario actual tiene rol de supervisor/admin
-                            $es_supervisor = $_SESSION['rol'] === 'admin' || $_SESSION['es_supervisor'] ?? false;
+                            $es_supervisor = ($_SESSION['rol'] ?? '') === 'admin' || ($_SESSION['es_supervisor'] ?? false);
                             if ($es_supervisor): 
                             ?>
                                 <div style="margin-top: 15px;">
@@ -1127,9 +1045,7 @@ if (!empty($nombreEmpleado)) {
                     </div>
 
                     <script>
-                    // Datos de equipos por área
                     const equiposPorArea = <?= json_encode($equipos_por_area, JSON_UNESCAPED_UNICODE) ?>;
-
                     const selectArea = document.getElementById('area');
                     const selectEquipo = document.getElementById('equipo');
 
@@ -1278,10 +1194,10 @@ if (!empty($nombreEmpleado)) {
                                                 </td>
                                                 <td><?= htmlspecialchars($solicitud['nombre_tecnico'] ?? '-') ?></td>
                                                 <td>
-                                                    <span class="badge badge-<?= $solicitud['tiempo_respuesta'] && $solicitud['tiempo_respuesta'] > 30 ? 'danger' : 'secondary' ?>">
+                                                    <span class="badge badge-<?= ($solicitud['tiempo_respuesta'] ?? 0) > 30 ? 'danger' : 'secondary' ?>">
                                                         <?= $solicitud['tiempo_respuesta_formatted'] ?? '-' ?>
                                                     </span>
-                                                </td>
+                                                <td>
                                                 <td>
                                                     <span class="badge badge-success">
                                                         <?= $solicitud['duracion_paro_formatted'] ?? '-' ?>
@@ -1294,7 +1210,7 @@ if (!empty($nombreEmpleado)) {
                                                                 class="btn btn-secondary" style="padding:6px 12px;font-size:12px;">
                                                             <i class="fas fa-file-pdf"></i> PDF
                                                         </button>
-                                                        <?php if (($solicitud['tipo_paro'] === 'Sin WIP' || $solicitud['tipo_paro'] === 'Servidor') && $solicitud['estado'] === 'iniciada' && $solicitud['activo'] == 1): ?>
+                                                        <?php if (($solicitud['tipo_paro'] === 'Sin WIP' || $solicitud['tipo_paro'] === 'Servidor') && $solicitud['estado'] === 'iniciada' && ($solicitud['activo'] ?? 0) == 1): ?>
                                                             <button type="submit" name="finalizar_paro" value="1"
                                                                     class="btn btn-success" style="padding:6px 12px;font-size:12px;" 
                                                                     onclick="return confirm('¿Está seguro de finalizar este paro?');">
@@ -1312,7 +1228,6 @@ if (!empty($nombreEmpleado)) {
                     </div>
                 <?php endif; ?>
 
-                <!-- Filtros para el historial -->
                 <div class="card">
                     <div class="card-header">
                         <i class="fas fa-history"></i>
@@ -1322,7 +1237,6 @@ if (!empty($nombreEmpleado)) {
                         </span>
                     </div>
                     
-                    <!-- Filtros de fecha -->
                     <div class="filters-container">
                         <form method="GET" action="" style="display: contents;">
                             <div class="form-group">
@@ -1487,7 +1401,6 @@ if (!empty($nombreEmpleado)) {
             }
         }
 
-        // Validación de fechas en filtros
         function validarFechas() {
             const fechaDesde = document.getElementById('fecha_desde');
             const fechaHasta = document.getElementById('fecha_hasta');
@@ -1508,11 +1421,6 @@ if (!empty($nombreEmpleado)) {
             }
         }
 
-        // Confirmaciones para acciones importantes
-        function confirmarFinalizacion() {
-            return confirm('¿Está seguro que desea finalizar este paro de producción?\n\nEsta acción no se puede deshacer.');
-        }
-
         function confirmarSolicitud() {
             const motivo = document.getElementById('motivo_solicitud');
             const tipo = document.getElementById('tipo_paro');
@@ -1528,32 +1436,24 @@ if (!empty($nombreEmpleado)) {
             return true;
         }
 
-        // Asignar confirmaciones a formularios
         document.addEventListener('DOMContentLoaded', function() {
-            // Crear solicitud
             const crearForm = document.querySelector('button[name="crear_solicitud"]');
             if (crearForm) {
                 crearForm.closest('form').onsubmit = confirmarSolicitud;
             }
-            
-            // Validar fechas
             validarFechas();
         });
 
-        // Actualizar reloj
         setInterval(actualizarReloj, 1000);
         actualizarReloj();
 
-        // Auto-refresh cada 30 segundos
         let autoRefreshTimer = setInterval(() => {
-            // Solo refrescar si no hay modales abiertos o formularios siendo llenados
             const activeElement = document.activeElement;
             if (!activeElement || (activeElement.tagName !== 'INPUT' && activeElement.tagName !== 'TEXTAREA')) {
                 location.reload();
             }
         }, 30000);
 
-        // Pausar auto-refresh cuando el usuario está escribiendo
         document.addEventListener('focusin', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
                 clearInterval(autoRefreshTimer);
@@ -1571,39 +1471,12 @@ if (!empty($nombreEmpleado)) {
             }
         });
 
-        // Notificación visual para solicitudes pendientes
         const pendientes = <?= count(array_filter($solicitudes_pendientes, fn($s) => $s['estado'] === 'pendiente')) ?>;
         if (pendientes > 0) {
             document.title = `(${pendientes}) Solicitudes Pendientes - Sistema de Control`;
         }
-
-        // Resaltar tiempos críticos
-        document.addEventListener('DOMContentLoaded', function() {
-            const tiemposBadges = document.querySelectorAll('.badge');
-            tiemposBadges.forEach(badge => {
-                const texto = badge.textContent.trim();
-                if (texto.includes('min')) {
-                    const minutos = parseInt(texto);
-                    if (minutos > 60) {
-                        badge.style.animation = 'blink 1s infinite';
-                    }
-                }
-            });
-        });
-
-        // Animación para tiempos críticos
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes blink {
-                0% { opacity: 1; }
-                50% { opacity: 0.5; }
-                100% { opacity: 1; }
-            }
-        `;
-        document.head.appendChild(style);
     </script>
 
-    <!-- Tracking de navegación para monitor en vivo -->
     <script>
     (function() {
         const pagina = window.location.pathname.split('/').pop().replace('.php', '');
