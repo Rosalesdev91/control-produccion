@@ -1,4 +1,4 @@
-||<?php
+<?php
 session_start();
 require_once dirname(__DIR__) . '/config/database.php';
 require_once 'registrar_actividad.php';
@@ -458,28 +458,43 @@ $EQUIPOS = [];
 $EQUIPOS_DATA = []; // Array para almacenar id => nombre de equipos
 $TURNOS = [];
 
+// CONSULTAR ÁREAS
 $result = $conn->query("SELECT id, area FROM areas ORDER BY area ASC");
-while ($row = $result->fetch_assoc()) {
-    $AREAS[] = $row['area'];
-    $AREAS_DATA[] = ['id' => $row['id'], 'area' => $row['area']]; // Almacena id y nombre
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $AREAS[] = $row['area'];
+        $AREAS_DATA[] = ['id' => $row['id'], 'area' => $row['area']];
+    }
+} else {
+    error_log("Error en consulta áreas: " . $conn->error);
 }
 
 // Obtener equipos según el área seleccionada
 if (!empty($_SESSION['area_id'])) {
     $area_id_session = $_SESSION['area_id'];
-    $result = $conn->query("SELECT id, nombre_equipo FROM equipos WHERE area_id = $area_id_session ORDER BY nombre_equipo ASC");
+    $sql_equipos = "SELECT id, nombre_equipo FROM equipos WHERE area_id = $area_id_session ORDER BY nombre_equipo ASC";
 } else {
-    $result = $conn->query("SELECT id, nombre_equipo FROM equipos ORDER BY nombre_equipo ASC");
+    $sql_equipos = "SELECT id, nombre_equipo FROM equipos ORDER BY nombre_equipo ASC";
 }
 
-while ($row = $result->fetch_assoc()) {
-    $EQUIPOS[] = $row['nombre_equipo'];
-    $EQUIPOS_DATA[] = ['id' => $row['id'], 'nombre_equipo' => $row['nombre_equipo']]; // Almacena id y nombre
+$result = $conn->query($sql_equipos);
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $EQUIPOS[] = $row['nombre_equipo'];
+        $EQUIPOS_DATA[] = ['id' => $row['id'], 'nombre_equipo' => $row['nombre_equipo']];
+    }
+} else {
+    error_log("Error en consulta equipos: " . $conn->error);
 }
 
+// CONSULTAR TURNOS
 $result = $conn->query("SELECT turno FROM turnos ORDER BY turno ASC");
-while ($row = $result->fetch_assoc()) {
-    $TURNOS[] = $row['turno'];
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $TURNOS[] = $row['turno'];
+    }
+} else {
+    error_log("Error en consulta turnos: " . $conn->error);
 }
 
 // 9. Funciones auxiliares
