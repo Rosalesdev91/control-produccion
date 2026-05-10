@@ -503,6 +503,14 @@ function obtenerPromedioQuiebras($conn, $filtros): array
     $fecha_inicio = $filtros['fecha_inicio'];
     $fecha_fin = $filtros['fecha_fin'];
     
+    // Limpiar resultados pendientes antes de la consulta
+    while ($conn->more_results()) {
+        $conn->next_result();
+        if ($result = $conn->store_result()) {
+            $result->free();
+        }
+    }
+    
     // Obtener timeline SIN filtrar domingos (para estadísticas reales)
     $sql = "SELECT fecha as fecha_local, 
                    COUNT(*) as total 
@@ -512,8 +520,33 @@ function obtenerPromedioQuiebras($conn, $filtros): array
             ORDER BY fecha_local ASC";
     
     $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        error_log("Error prepare obtenerPromedioQuiebras: " . $conn->error);
+        return [
+            'promedio' => 0,
+            'mediana' => 0,
+            'dias_con_quiebras' => 0,
+            'total_quiebras' => 0,
+            'maximo' => 0,
+            'minimo' => 0
+        ];
+    }
+    
     $stmt->bind_param('ss', $fecha_inicio, $fecha_fin);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("Error execute obtenerPromedioQuiebras: " . $stmt->error);
+        $stmt->close();
+        return [
+            'promedio' => 0,
+            'mediana' => 0,
+            'dias_con_quiebras' => 0,
+            'total_quiebras' => 0,
+            'maximo' => 0,
+            'minimo' => 0
+        ];
+    }
+    
     $result = $stmt->get_result();
     $valores = [];
     while ($row = $result->fetch_assoc()) {
