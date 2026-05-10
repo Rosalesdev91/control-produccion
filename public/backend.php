@@ -593,7 +593,15 @@ function obtenerAreasProduccion($conn, $filtros): array
     $fecha_inicio = $filtros['fecha_inicio'];
     $fecha_fin = $filtros['fecha_fin'];
     
-    // Paso 1: Obtener todos los empleados y el área donde produjeron (su área principal)
+    // Limpiar resultados pendientes antes de empezar
+    while ($conn->more_results()) {
+        $conn->next_result();
+        if ($result = $conn->store_result()) {
+            $result->free();
+        }
+    }
+    
+    // Paso 1: Obtener todos los empleados y el área donde produjeron
     $sqlEmpleadosArea = "SELECT DISTINCT empleado, area
                          FROM (
                              SELECT empleado, area FROM produccion WHERE DATE(fecha) BETWEEN ? AND ? AND empleado IS NOT NULL AND empleado != '' AND empleado != 'N/A'
@@ -603,8 +611,19 @@ function obtenerAreasProduccion($conn, $filtros): array
                          GROUP BY empleado";
     
     $stmt = $conn->prepare($sqlEmpleadosArea);
+    if (!$stmt) {
+        error_log("Error prepare obtenerAreasProduccion (empleadosArea): " . $conn->error);
+        return [];
+    }
+    
     $stmt->bind_param('ssss', $fecha_inicio, $fecha_fin, $fecha_inicio, $fecha_fin);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("Error execute obtenerAreasProduccion (empleadosArea): " . $stmt->error);
+        $stmt->close();
+        return [];
+    }
+    
     $result = $stmt->get_result();
     $empleadosAreaMap = [];
     while ($row = $result->fetch_assoc()) {
@@ -612,7 +631,7 @@ function obtenerAreasProduccion($conn, $filtros): array
     }
     $stmt->close();
     
-    // Paso 2: Obtener todas las quiebras y asignarlas al área del empleado
+    // Paso 2: Obtener todas las quiebras
     $sqlQuiebras = "SELECT empleado, COUNT(*) as total_quiebras
                     FROM registro_quiebras
                     WHERE fecha BETWEEN ? AND ?
@@ -620,8 +639,19 @@ function obtenerAreasProduccion($conn, $filtros): array
                     GROUP BY empleado";
     
     $stmt = $conn->prepare($sqlQuiebras);
+    if (!$stmt) {
+        error_log("Error prepare obtenerAreasProduccion (quiebras): " . $conn->error);
+        return [];
+    }
+    
     $stmt->bind_param('ss', $fecha_inicio, $fecha_fin);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("Error execute obtenerAreasProduccion (quiebras): " . $stmt->error);
+        $stmt->close();
+        return [];
+    }
+    
     $result = $stmt->get_result();
     $quiebrasPorEmpleado = [];
     while ($row = $result->fetch_assoc()) {
@@ -637,8 +667,19 @@ function obtenerAreasProduccion($conn, $filtros): array
                 GROUP BY area";
     
     $stmt = $conn->prepare($sqlProd);
+    if (!$stmt) {
+        error_log("Error prepare obtenerAreasProduccion (produccion): " . $conn->error);
+        return [];
+    }
+    
     $stmt->bind_param('ssss', $fecha_inicio, $fecha_fin, $fecha_inicio, $fecha_fin);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("Error execute obtenerAreasProduccion (produccion): " . $stmt->error);
+        $stmt->close();
+        return [];
+    }
+    
     $result = $stmt->get_result();
     $produccionPorArea = [];
     while ($row = $result->fetch_assoc()) {
@@ -646,7 +687,7 @@ function obtenerAreasProduccion($conn, $filtros): array
     }
     $stmt->close();
     
-    // Paso 4: Contabilizar quiebras por área (basado en el área DONDE PRODUJO el empleado)
+    // Paso 4: Contabilizar quiebras por área
     $quiebrasPorArea = [];
     $empleadosConQuiebrasPorArea = [];
     
@@ -656,13 +697,12 @@ function obtenerAreasProduccion($conn, $filtros): array
             $quiebrasPorArea[$areaEmpleado] = ($quiebrasPorArea[$areaEmpleado] ?? 0) + $totalQuiebras;
             $empleadosConQuiebrasPorArea[$areaEmpleado] = ($empleadosConQuiebrasPorArea[$areaEmpleado] ?? 0) + 1;
         } else {
-            // Empleado sin producción en el período - asignar a "Sin área"
             $quiebrasPorArea['Sin área'] = ($quiebrasPorArea['Sin área'] ?? 0) + $totalQuiebras;
             $empleadosConQuiebrasPorArea['Sin área'] = ($empleadosConQuiebrasPorArea['Sin área'] ?? 0) + 1;
         }
     }
     
-    // Paso 5: Construir resultado combinando todas las áreas
+    // Paso 5: Construir resultado
     $todasLasAreas = array_unique(array_merge(array_keys($produccionPorArea), array_keys($quiebrasPorArea)));
     $resultado = [];
     
@@ -671,7 +711,6 @@ function obtenerAreasProduccion($conn, $filtros): array
         $totalQuie = $quiebrasPorArea[$area] ?? 0;
         $empleadosConQuie = $empleadosConQuiebrasPorArea[$area] ?? 0;
         
-        // Solo incluir áreas con producción o quiebras
         if ($totalProd > 0 || $totalQuie > 0) {
             $resultado[] = [
                 'area' => $area,
@@ -682,7 +721,6 @@ function obtenerAreasProduccion($conn, $filtros): array
         }
     }
     
-    // Ordenar por área
     usort($resultado, function($a, $b) {
         return strcmp($a['area'], $b['area']);
     });
