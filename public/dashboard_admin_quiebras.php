@@ -847,55 +847,55 @@ th, td {
                 <p><strong>Total Quiebras: <?= count($filas) ?> registros</strong></p>
                 <div class="tabla-scroll">
                     <table>
-<thead>
-    <tr>
-        <th>ID</th>
-        <th>Registrado por</th>
-        <th>N° Orden</th>
-        <th>Turno</th>
-        <th>Responsable</th>
-        <th>Empleado</th>
-        <th>Equipo</th>
-        <th>Motivo</th>
-        <th>Defecto</th>
-        <th>Lado Lente</th>
-        <th>Fecha y Hora</th>
-        <th>Acciones</th>
-    </tr>
-</thead>
-<tbody>
-    <?php foreach ($filas as $row): ?>
+    <thead>
         <tr>
-            <td><?= htmlspecialchars($row['id'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['empleado_registro'] ?? 'No especificado') ?></td>
-            <td><?= htmlspecialchars($row['orden'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['turno'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['responsable'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['empleado'] ?? 'No especificado') ?></td>
-            <td><?= htmlspecialchars($row['equipo'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['motivo'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['porque_defecto'] ?? '') ?></td>
-            <td><?= htmlspecialchars($row['lado_lente'] ?? '') ?></td>
-            <td>
-                <?php 
-                    $fechaCompleta = ($row['fecha'] ?? '') . ' ' . ($row['hora'] ?? '00:00:00');
-                    if (!empty($row['fecha'])) {
-                        echo date('d-m-Y h:i:s A', strtotime($fechaCompleta));
-                    } else {
-                        echo 'No registrada';
-                    }
-                ?>
-            </td>
-            <td>
-                <form method="POST" data-orden="<?= htmlspecialchars($row['id'] ?? '') ?>">
-                    <input type="hidden" name="eliminar_quiebra_id" value="<?= htmlspecialchars($row['id'] ?? '') ?>">
-                    <button type="submit" class="btn-eliminar">🗑️ Eliminar</button>
-                </form>
-            </td>
+            <th>ID</th>
+            <th>Registro</th>
+            <th>N° Orden</th>
+            <th>Turno</th>
+            <th>Responsable</th>
+            <th>Empleado</th>
+            <th>Equipo</th>
+            <th>Motivo</th>
+            <th>Defecto</th>
+            <th>Lado Lente</th>
+            <th>Fecha y Hora</th>
+            <th>Acciones</th>
         </tr>
-    <?php endforeach; ?>
-</tbody>
-                    </table>
+    </thead>
+    <tbody>
+        <?php foreach ($filas as $row): ?>
+            <tr>
+                <td><?= htmlspecialchars($row['id'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['empleado_registro'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['orden'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['turno'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['responsable'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['empleado'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['equipo'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['motivo'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['porque_defecto'] ?? '') ?></td>
+                <td><?= htmlspecialchars($row['lado_lente'] ?? '') ?></td>
+                <td>
+                    <?php 
+                        $fechaCompleta = ($row['fecha'] ?? '') . ' ' . ($row['hora'] ?? '00:00:00');
+                        if (!empty($row['fecha'])) {
+                            echo date('d-m-Y h:i:s A', strtotime($fechaCompleta));
+                        } else {
+                            echo 'No registrada';
+                        }
+                    ?>
+                </td>
+                <td>
+                    <form method="POST" data-orden="<?= htmlspecialchars($row['id'] ?? '') ?>">
+                        <input type="hidden" name="eliminar_quiebra_id" value="<?= htmlspecialchars($row['id'] ?? '') ?>">
+                        <button type="submit" class="btn-eliminar">🗑️ Eliminar</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
                 </div>
             </div>
         </div>
