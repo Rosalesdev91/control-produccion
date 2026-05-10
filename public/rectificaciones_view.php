@@ -1,7 +1,7 @@
 <?php
 // Iniciar la sesión para gestionar el acceso del usuario
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Configuración inicial de la base de datos
 $conn->set_charset("utf8");

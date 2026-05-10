@@ -39,7 +39,7 @@ class LoginSystem {
     }
 
     public function validarCodigo($codigo, $area) {
-        require_once '../config/database.php';
+        require_once dirname(__DIR__) . '/config/database.php';
 
         $stmt = $conn->prepare("SELECT id, nombre_empleado, rol FROM empleados WHERE codigo_empleado = ?");
         $stmt->bind_param("s", $codigo);

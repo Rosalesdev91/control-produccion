@@ -4,7 +4,7 @@
 
 session_start();
 
-require_once '../config/database.php'; // Asume que tienes esta conexión
+require_once dirname(__DIR__) . '/config/database.php'; // Asume que tienes esta conexión
 
 // Zona horaria
 date_default_timezone_set('America/Guatemala');

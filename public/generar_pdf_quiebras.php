@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Ruta base para incluir librerías
 define('ROOT_PATH', $_SERVER['DOCUMENT_ROOT'] . '/control_produccion/public/');

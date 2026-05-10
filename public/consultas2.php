@@ -11,7 +11,7 @@
 
 session_start();
 
-require_once '../config/database.php'; // Asume que tienes esta conexión
+require_once dirname(__DIR__) . '/config/database.php'; // Asume que tienes esta conexión
 
 // Verificación inmediata de conexión
 if (!isset($conn) || $conn === null || !$conn->ping()) {

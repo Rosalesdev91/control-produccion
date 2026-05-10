@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Verificar acceso
 if (!isset($_SESSION['nombre_empleado']) || $_SESSION['rol'] !== 'empleado' || !isset($_GET['session_id']) || $_GET['session_id'] !== $_SESSION['session_id']) {

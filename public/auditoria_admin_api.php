@@ -30,7 +30,7 @@ if (!isset($_SESSION['empleado']) || $_SESSION['rol'] != 'administrador') {
 }
 
 // ── Ruta a la BD: mismo nivel que public/ ──
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 if (!isset($conn) || $conn->connect_error) {
     enviar_json(['error' => 'Error de conexión a la base de datos'], 500);

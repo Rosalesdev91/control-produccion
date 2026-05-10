@@ -1,5 +1,5 @@
 <?php
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 session_start();
 
 // Validar sesión y rol

@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Zona horaria consistente con registro.php
 date_default_timezone_set('America/Costa_Rica');

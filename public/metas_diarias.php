@@ -15,7 +15,7 @@
 session_start();
 
 // Incluir configuración de la base de datos
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Configurar zona horaria para Guatemala
 date_default_timezone_set('America/Guatemala');

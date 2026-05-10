@@ -15,7 +15,7 @@ if (!isset($_SESSION['empleado'], $_SESSION['rol'])) {
     exit();
 }
 
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 date_default_timezone_set('America/Costa_Rica');
 
 $conn->set_charset("utf8mb4");

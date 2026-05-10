@@ -12,7 +12,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($rol === 'administrador') {
         $codigo = htmlspecialchars(trim($codigo));
 
-        require_once '../config/database.php';
+        require_once dirname(__DIR__) . '/config/database.php';
 
         $stmt = $conn->prepare("SELECT id, nombre_empleado, rol FROM empleados WHERE codigo_empleado = ?");
         $stmt->bind_param("s", $codigo);

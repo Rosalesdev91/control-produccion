@@ -34,7 +34,7 @@ control_produccion/modules/capacitaciones/admin/
 ### Paso 3 — Verificar config de BD
 El archivo `backend_capacitaciones.php` usa:
 ```php
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 ```
 Igual que tu `backend.php` existente. Si tu ruta es diferente, ajusta la línea.
 

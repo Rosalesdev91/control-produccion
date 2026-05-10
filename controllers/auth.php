@@ -1,6 +1,6 @@
 <?php
 session_start();
-require '../config/database.php';
+require dirname(__DIR__) . '/config/database.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nombre = $_POST['nombre'];

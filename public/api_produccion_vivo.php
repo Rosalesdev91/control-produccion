@@ -21,7 +21,7 @@ header('Cache-Control: no-cache, must-revalidate');
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 date_default_timezone_set('America/Guatemala');
 
 // ============================================================================

@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Guardamos el nombre original por si alguien está logueado
 $nombre_original = $_SESSION['nombre_empleado']['nombre_empleado'] ?? null;

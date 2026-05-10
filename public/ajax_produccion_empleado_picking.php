@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 if (!isset($_SESSION['admin_id']) && !isset($_SESSION['rol']) !== 'administrador') {
     die('Acceso no autorizado');

@@ -9,7 +9,7 @@ if (!isset($_SESSION['empleado']) || $_SESSION['rol'] !== 'administrador') {
 }
 
 // Incluir configuración de la base de datos
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 require_once 'registrar_actividad.php';
 
 // Establecer zona horaria

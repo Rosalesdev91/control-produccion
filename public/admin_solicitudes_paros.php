@@ -1,7 +1,7 @@
 <?php
 // admin_solicitudes_paros.php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 require_once 'registrar_actividad.php';
 
 // Verificar sesión de administrador

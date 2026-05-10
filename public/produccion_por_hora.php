@@ -1,5 +1,5 @@
 <?php
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($empleado_detalle)) {
     // Soporte tanto para POST como para inclusión directa

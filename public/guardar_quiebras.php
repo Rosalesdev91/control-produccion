@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Cargar FPDF si no está cargado
 if (!class_exists('FPDF')) {

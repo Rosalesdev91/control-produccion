@@ -21,7 +21,7 @@ if (!isset($_SESSION['empleado'], $_SESSION['rol']) || $_SESSION['rol'] !== 'adm
     exit();
 }
 
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Validación y sanitización del parámetro orden
 if (!isset($_GET['orden']) || empty(trim($_GET['orden']))) {

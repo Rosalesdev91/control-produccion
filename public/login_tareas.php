@@ -17,7 +17,7 @@ session_set_cookie_params([
 ]);
 
 session_start();
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Configuración de base de datos
 $conn->set_charset("utf8mb4");

@@ -8,7 +8,7 @@ if (!isset($_SESSION['empleado']) || $_SESSION['rol'] !== 'administrador') {
     exit(json_encode(['error' => 'No autorizado']));
 }
 
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 header('Content-Type: application/json; charset=utf-8');
 
 // Parámetros

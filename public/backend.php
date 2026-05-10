@@ -12,7 +12,7 @@ if (!isset($_SESSION['empleado'], $_SESSION['rol']) || $_SESSION['rol'] !== 'adm
     exit();
 }
 
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 date_default_timezone_set('America/Costa_Rica');
 ini_set('date.timezone', 'America/Costa_Rica');

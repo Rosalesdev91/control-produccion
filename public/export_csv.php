@@ -12,7 +12,7 @@ ob_start();
 session_start();
 
 // Incluir configuración de la base de datos
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Verificar e incluir la librería PhpSpreadsheet
 $autoloadPath = __DIR__ . '/../vendor/autoload.php';
