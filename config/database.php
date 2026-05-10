@@ -1,6 +1,9 @@
 <?php
 // config/database.php
 
+// Zona horaria PHP
+date_default_timezone_set('America/Costa_Rica');
+
 // Detectar si estamos en Railway o en XAMPP local
 $es_railway = !empty(getenv('MYSQL_HOST')) || !empty(getenv('MYSQLHOST'));
 
@@ -13,7 +16,7 @@ if ($es_railway) {
     $db_name     = getenv('MYSQL_DATABASE') ?: getenv('MYSQLDATABASE') ?: 'railway';
 } else {
     // ── XAMPP LOCAL ──
-    $db_host     = 'localhost';
+    $db_host     = '127.0.0.1';
     $db_port     = 3306;
     $db_user     = 'root';
     $db_password = '';
@@ -27,14 +30,22 @@ $conn = new mysqli($db_host, $db_user, $db_password, $db_name, $db_port);
 
 if ($conn->connect_error) {
     error_log("[DB ERROR] " . $conn->connect_error);
+
     $es_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
                str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
+
     if ($es_ajax) {
         header('Content-Type: application/json');
         http_response_code(500);
-        die(json_encode(['error' => true, 'mensaje' => 'Error de conexión a la base de datos.']));
+
+        die(json_encode([
+            'error' => true,
+            'mensaje' => 'Error de conexión a la base de datos.'
+        ]));
     }
+
     http_response_code(500);
+
     die('
     <div style="font-family:Arial;text-align:center;padding:60px;background:#0a3d1a;color:#d4fcd4;min-height:100vh">
         <h2>&#9888;&#65039; Error de conexión</h2>
@@ -43,4 +54,8 @@ if ($conn->connect_error) {
     </div>');
 }
 
+// Charset
 $conn->set_charset("utf8mb4");
+
+// Zona horaria MySQL
+$conn->query("SET time_zone='-06:00'");
