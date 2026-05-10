@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 // CONFIGURACIÓN DE SESIÓN COMPATIBLE CON IPHONE, ANDROID Y TODOS LOS NAVEGADORES
-$lifetime = 86400 * 7; // 7 días de sesión (ajusta si quieres)
+$lifetime = 86400 * 7; // 7 días de sesión
 
 $is_https = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' || 
             (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
@@ -11,13 +11,24 @@ session_set_cookie_params([
     'lifetime' => $lifetime,
     'path' => '/',
     'domain' => '',
-    'secure' => $is_https,           // Solo envía cookie por HTTPS si el sitio lo usa
-    'httponly' => true,              // Evita acceso desde JavaScript
-    'samesite' => 'Lax'              // Compatible con login POST en todos los dispositivos
+    'secure' => $is_https,
+    'httponly' => true,
+    'samesite' => 'Lax'
 ]);
 
 session_start();
 require_once dirname(__DIR__) . '/config/database.php';
+
+// Función helper para limpiar resultados pendientes
+function limpiar_resultados_login_paros($conn) {
+    if (!$conn) return;
+    while ($conn->more_results()) {
+        $conn->next_result();
+        if ($result = $conn->store_result()) {
+            $result->free();
+        }
+    }
+}
 
 // Configuración de base de datos
 $conn->set_charset("utf8mb4");
@@ -46,20 +57,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("La contraseña es obligatoria.");
             }
 
-            // Buscar técnico activo con esa contraseña exacta
-            $stmt = $conn->prepare("SELECT id, nombre_tecnico FROM tecnicos WHERE contrasena = ? AND activo = 1 LIMIT 1");
-            $stmt->bind_param("s", $contrasena);
-            $stmt->execute();
-            $result = $stmt->get_result();
-
-            if ($result->num_rows === 0) {
+            // Limpiar resultados pendientes antes de la consulta
+            limpiar_resultados_login_paros($conn);
+            
+            // Usar query() en lugar de prepare() para evitar errores en Railway
+            $contrasena_esc = $conn->real_escape_string($contrasena);
+            $res = $conn->query("SELECT id, nombre_tecnico FROM tecnicos WHERE contrasena = '$contrasena_esc' AND activo = 1 LIMIT 1");
+            
+            if (!$res || $res->num_rows === 0) {
                 throw new Exception("Contraseña incorrecta o técnico no encontrado.");
             }
 
-            $row = $result->fetch_assoc();
-            $stmt->close();
+            $row = $res->fetch_assoc();
+            $res->free();
+            limpiar_resultados_login_paros($conn);
+            
             $_SESSION['ip'] = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-
 
             // Login exitoso - Guardar en sesión
             $_SESSION['user_id'] = $row['id'];
@@ -98,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --radius: 12px;
             --radius-sm: 8px;
         }
-        * { margin: border-box;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             margin: 0;
             font-family: system-ui, -apple-system, sans-serif;
