@@ -456,6 +456,9 @@ function obtenerTimelineQuiebras($conn, $filtros): array
     $fecha_inicio = $filtros['fecha_inicio'];
     $fecha_fin = $filtros['fecha_fin'];
     
+    // Limpiar resultados pendientes antes de la consulta
+    limpiar_resultados_backend($conn);
+    
     // Incluir día de la semana (1 = lunes, 7 = domingo)
     $sql = "SELECT fecha as fecha_local, 
                    DATE_FORMAT(fecha, '%d/%m') as fecha_display,
@@ -468,8 +471,19 @@ function obtenerTimelineQuiebras($conn, $filtros): array
             ORDER BY fecha_local ASC";
     
     $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        error_log("Error prepare obtenerTimelineQuiebras: " . $conn->error);
+        return [];
+    }
+    
     $stmt->bind_param('ss', $fecha_inicio, $fecha_fin);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("Error execute obtenerTimelineQuiebras: " . $stmt->error);
+        $stmt->close();
+        return [];
+    }
+    
     $result = $stmt->get_result();
     $datos = [];
     while ($row = $result->fetch_assoc()) {
@@ -484,7 +498,6 @@ function obtenerTimelineQuiebras($conn, $filtros): array
     
     return $datos;
 }
-
 function obtenerPromedioQuiebras($conn, $filtros): array
 {
     $fecha_inicio = $filtros['fecha_inicio'];
