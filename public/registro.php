@@ -534,36 +534,54 @@ function actualizarContadores($conn, $empleado, $area = null, $equipo = null, $t
     if ($area) {
         $query_area = "SELECT COUNT(*) FROM produccion WHERE empleado = ? AND area = ? AND turno = ? AND $cond_fecha";
         $stmt1 = $conn->prepare($query_area);
-        ($turno === "C")
-            ? $stmt1->bind_param("sssss", $empleado, $area, $turno, $inicio, $fin)
-            : $stmt1->bind_param("sss", $empleado, $area, $turno);
-        $stmt1->execute();
-        $stmt1->bind_result($contador_area);
-        $stmt1->fetch();
-        $stmt1->close();
+        if ($stmt1) {
+            if ($turno === "C") {
+                $stmt1->bind_param("sssss", $empleado, $area, $turno, $inicio, $fin);
+            } else {
+                $stmt1->bind_param("sss", $empleado, $area, $turno);
+            }
+            $stmt1->execute();
+            $stmt1->bind_result($contador_area);
+            $stmt1->fetch();
+            $stmt1->close();
+        } else {
+            error_log("Error prepare (area): " . $conn->error);
+        }
     }
 
     if ($equipo) {
         $query_equipo = "SELECT COUNT(*) FROM produccion WHERE empleado = ? AND equipo = ? AND turno = ? AND $cond_fecha";
         $stmt2 = $conn->prepare($query_equipo);
-        ($turno === "C")
-            ? $stmt2->bind_param("sssss", $empleado, $equipo, $turno, $inicio, $fin)
-            : $stmt2->bind_param("sss", $empleado, $equipo, $turno);
-        $stmt2->execute();
-        $stmt2->bind_result($contador_equipo);
-        $stmt2->fetch();
-        $stmt2->close();
+        if ($stmt2) {
+            if ($turno === "C") {
+                $stmt2->bind_param("sssss", $empleado, $equipo, $turno, $inicio, $fin);
+            } else {
+                $stmt2->bind_param("sss", $empleado, $equipo, $turno);
+            }
+            $stmt2->execute();
+            $stmt2->bind_result($contador_equipo);
+            $stmt2->fetch();
+            $stmt2->close();
+        } else {
+            error_log("Error prepare (equipo): " . $conn->error);
+        }
     }
 
     $query_total = "SELECT COUNT(*) FROM produccion WHERE empleado = ? AND turno = ? AND $cond_fecha";
     $stmt3 = $conn->prepare($query_total);
-    ($turno === "C")
-        ? $stmt3->bind_param("ssss", $empleado, $turno, $inicio, $fin)
-        : $stmt3->bind_param("ss", $empleado, $turno);
-    $stmt3->execute();
-    $stmt3->bind_result($contador_total);
-    $stmt3->fetch();
-    $stmt3->close();
+    if ($stmt3) {
+        if ($turno === "C") {
+            $stmt3->bind_param("ssss", $empleado, $turno, $inicio, $fin);
+        } else {
+            $stmt3->bind_param("ss", $empleado, $turno);
+        }
+        $stmt3->execute();
+        $stmt3->bind_result($contador_total);
+        $stmt3->fetch();
+        $stmt3->close();
+    } else {
+        error_log("Error prepare (total): " . $conn->error);
+    }
 
     return [$contador_area, $contador_equipo, $contador_total];
 }
