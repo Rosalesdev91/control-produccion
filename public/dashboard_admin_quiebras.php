@@ -8,23 +8,28 @@ if (!isset($_SESSION['empleado']) || $_SESSION['rol'] !== 'administrador') {
     exit();
 }
 
-$conn = new mysqli($host, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Conexión fallida: " . $conn->connect_error);
-}
+// Usar la conexión de database.php
+global $conn;
 
+if (!$conn || $conn->connect_error) {
+    die("Error de conexión a la base de datos. Contacte al administrador.");
+}
 function obtenerOpciones($conn, $columna) {
-    $sql = "SELECT DISTINCT $columna FROM registro_quiebras WHERE $columna IS NOT NULL AND $columna != ''";
+    // Escapar el nombre de la columna para evitar SQL injection
+    $columna_esc = preg_replace('/[^a-zA-Z_]/', '', $columna);
+    $sql = "SELECT DISTINCT $columna_esc FROM registro_quiebras WHERE $columna_esc IS NOT NULL AND $columna_esc != ''";
     $result = $conn->query($sql);
     $opciones = [];
 
-    while ($row = $result->fetch_assoc()) {
-        $opciones[] = $row[$columna];
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $opciones[] = $row[$columna_esc];
+        }
+        $result->free();
     }
 
     return $opciones;
 }
-
 function obtenerQuiebrasFiltradas($conn, $filtros) {
     // Verificar si hay algún filtro activo relevante
     $filtrosActivos = false;
@@ -35,7 +40,6 @@ function obtenerQuiebrasFiltradas($conn, $filtros) {
         }
     }
     if (!$filtrosActivos) {
-        // Si no hay filtros, no mostrar nada (retorna arreglo vacío)
         return [];
     }
 
@@ -57,18 +61,6 @@ function obtenerQuiebrasFiltradas($conn, $filtros) {
         if (!$hora) return null;
         $hora24 = date("H:i:s", strtotime("$hora $ampm"));
         return $hora24;
-    }
-
-    // Función para mostrar fecha y hora en formato dd/mm/YYYY hh:mm AM/PM
-    function formatearFechaHoraConAmPm($fecha, $hora, $ampm) {
-        if (!$fecha) return '';
-        if (!$hora) return date('d/m/Y', strtotime($fecha));
-
-        $fechaHoraStr = "$fecha $hora $ampm";
-        $timestamp = strtotime($fechaHoraStr);
-        if (!$timestamp) return '';
-
-        return date('d/m/Y h:i A', $timestamp);
     }
 
     // Construcción de filtros para consulta SQL
@@ -94,33 +86,44 @@ function obtenerQuiebrasFiltradas($conn, $filtros) {
         $types .= "s";
     }
 
-    // Filtro número de id con LIKE para búsqueda parcial
+    // Filtro número de id con LIKE
     if (!empty($filtros['id'])) {
         $sql .= " AND id LIKE ?";
         $params[] = "%" . $filtros['id'] . "%";
         $types .= "s";
     }
 
-    // Filtro número de orden con LIKE para búsqueda parcial
+    // Filtro número de orden con LIKE
     if (!empty($filtros['orden'])) {
         $sql .= " AND orden LIKE ?";
         $params[] = "%" . $filtros['orden'] . "%";
         $types .= "s";
     }
 
+    // ✅ VALIDAR prepare()
     $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        error_log("Error prepare en obtenerQuiebrasFiltradas: " . $conn->error);
+        return [];
+    }
 
     if (!empty($params)) {
         $stmt->bind_param($types, ...$params);
     }
 
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        error_log("Error execute en obtenerQuiebrasFiltradas: " . $stmt->error);
+        $stmt->close();
+        return [];
+    }
+
     $result = $stmt->get_result();
     $quiebras = [];
 
     while ($row = $result->fetch_assoc()) {
         $quiebras[] = $row;
     }
+    $stmt->close();
 
     return $quiebras;
 }
@@ -218,21 +221,29 @@ $labels_json = json_encode($labels);
 $counts_json = json_encode($counts);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['eliminar_quiebra_id'])) {
-    $idAEliminar = filter_var($_POST['eliminar_quiebra_id'], FILTER_SANITIZE_STRING);
-
-    if ($stmtEliminar = $conn->prepare("DELETE FROM registro_quiebras WHERE id = ?")) {
+    $idAEliminar = htmlspecialchars(trim($_POST['eliminar_quiebra_id']));
+    
+    // ✅ Validar prepare()
+    $stmtEliminar = $conn->prepare("DELETE FROM registro_quiebras WHERE id = ?");
+    if (!$stmtEliminar) {
+        $errorMsg = "Error al preparar la consulta para eliminar.";
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            echo json_encode(['success' => false, 'error' => $errorMsg]);
+            exit;
+        } else {
+            echo "<p style='color: red;'>$errorMsg</p>";
+        }
+    } else {
         $stmtEliminar->bind_param("s", $idAEliminar);
 
         if ($stmtEliminar->execute()) {
             $stmtEliminar->close();
 
-            // Si es una petición AJAX
             if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                 echo json_encode(['success' => true]);
                 exit;
             }
 
-            // Redirección normal si no es AJAX (sin mantener filtros)
             header("Location: " . $_SERVER['PHP_SELF'] . "?mensaje=eliminado");
             exit;
         } else {
@@ -245,15 +256,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['eliminar_quiebra_id'
             } else {
                 echo "<p style='color: red;'>$errorMsg</p>";
             }
-        }
-    } else {
-        $errorMsg = "Error al preparar la consulta para eliminar.";
-
-        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-            echo json_encode(['success' => false, 'error' => $errorMsg]);
-            exit;
-        } else {
-            echo "<p style='color: red;'>$errorMsg</p>";
         }
     }
 }
