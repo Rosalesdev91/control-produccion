@@ -3021,6 +3021,16 @@ function obtenerReporteQuiebrasPorEmpleado($conn, $fecha_desde, $fecha_hasta, $h
     return $resultados;
 }
 
+function limpiar_resultados_backend($conn) {
+    if (!$conn) return;
+    while ($conn->more_results()) {
+        $conn->next_result();
+        if ($result = $conn->store_result()) {
+            $result->free();
+        }
+    }
+}
+
 // ============================================
 // PROCESAMIENTO DE FILTROS
 // ============================================
