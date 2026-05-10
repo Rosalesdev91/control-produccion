@@ -376,13 +376,16 @@ $mensaje = "Ya registraste esta orden en " .
 
 // 7. Consultar empleado - MODIFICADO para guardar TODOS los datos de sesión
 if (isset($_POST['consultar_empleado']) && !empty($codigoEmpleado)) {
-    // Obtener TODOS los datos del empleado (incluyendo rol y código)
-    $stmt = $conn->prepare("SELECT id, nombre_empleado, codigo_empleado, rol FROM empleados WHERE codigo_empleado = ?");
-    $stmt->bind_param("s", $codigoEmpleado);
-    $stmt->execute();
-    $stmt->bind_result($id_empleado, $nombre, $codigo, $rol);
+    // Obtener TODOS los datos del empleado - usar query() en lugar de prepare()
+    $codigo_esc = $conn->real_escape_string($codigoEmpleado);
+    $res = $conn->query("SELECT id, nombre_empleado, codigo_empleado, rol FROM empleados WHERE codigo_empleado = '$codigo_esc'");
     
-    if ($stmt->fetch()) {
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        $id_empleado = $row['id'];
+        $nombre = $row['nombre_empleado'];
+        $codigo = $row['codigo_empleado'];
+        $rol = $row['rol'];
         $nombreEmpleado = $nombre;
         
         // Obtener información del cliente
@@ -414,13 +417,17 @@ if (isset($_POST['consultar_empleado']) && !empty($codigoEmpleado)) {
             $_SESSION['equipo_seleccionado'], 
             $_SESSION['equipo_id']
         );
+        
+        $res->free();
+        limpiar_resultados($conn);
 
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
     } else {
         $mensaje = "Empleado no encontrado con el código: $codigoEmpleado";
     }
-    $stmt->close();
+    limpiar_resultados($conn);
+    
 } elseif (!empty($_SESSION['codigoEmpleado']) && !empty($_SESSION['nombreEmpleado'])) {
     $codigoEmpleado = $_SESSION['codigoEmpleado'];
     $nombreEmpleado = $_SESSION['nombreEmpleado'];
@@ -428,17 +435,18 @@ if (isset($_POST['consultar_empleado']) && !empty($codigoEmpleado)) {
     
     // Asegurar que las variables del monitor existan (por si acaso)
     if (!isset($_SESSION['rol'])) {
-        // Recuperar rol de la BD si no está en sesión
-        $stmt = $conn->prepare("SELECT id, codigo_empleado, rol FROM empleados WHERE codigo_empleado = ?");
-        $stmt->bind_param("s", $codigoEmpleado);
-        $stmt->execute();
-        $stmt->bind_result($id_emp, $cod_emp, $rol_emp);
-        if ($stmt->fetch()) {
-            $_SESSION['rol'] = $rol_emp;
-            $_SESSION['codigo_empleado'] = $cod_emp;
-            $_SESSION['id_empleado'] = $id_emp;
+        // Recuperar rol de la BD si no está en sesión - usar query() en lugar de prepare()
+        $codigo_esc = $conn->real_escape_string($codigoEmpleado);
+        $res = $conn->query("SELECT id, codigo_empleado, rol FROM empleados WHERE codigo_empleado = '$codigo_esc'");
+        
+        if ($res && $res->num_rows > 0) {
+            $row = $res->fetch_assoc();
+            $_SESSION['rol'] = $row['rol'];
+            $_SESSION['codigo_empleado'] = $row['codigo_empleado'];
+            $_SESSION['id_empleado'] = $row['id'];
+            $res->free();
         }
-        $stmt->close();
+        limpiar_resultados($conn);
     }
     
     // Asegurar que IP esté registrada
