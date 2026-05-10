@@ -6,6 +6,7 @@
  */
 
 session_start();
+require_once dirname(__DIR__) . '/config/database.php';
 require_once 'registrar_actividad.php';
 
 // Función para obtener IP real
@@ -20,6 +21,17 @@ function getRealIP() {
         return $_SERVER['HTTP_X_REAL_IP'];
     }
     return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+}
+
+// Función helper para limpiar resultados pendientes
+function limpiar_resultados_login($conn) {
+    if (!$conn) return;
+    while ($conn->more_results()) {
+        $conn->next_result();
+        if ($result = $conn->store_result()) {
+            $result->free();
+        }
+    }
 }
 
 class LoginSystem {
@@ -62,15 +74,19 @@ class LoginSystem {
     }
 
     public function validarCodigoQuiebras($codigo) {
-        require_once dirname(__DIR__) . '/config/database.php';
-
-        $stmt = $conn->prepare("SELECT id, nombre_empleado, codigo_empleado, rol FROM empleados WHERE codigo_empleado = ?");
-        $stmt->bind_param("s", $codigo);
-        $stmt->execute();
-        $resultado = $stmt->get_result();
-
-        if ($resultado->num_rows === 1) {
-            $row = $resultado->fetch_assoc();
+        global $conn;
+        
+        // Limpiar resultados pendientes antes de la consulta
+        limpiar_resultados_login($conn);
+        
+        // Usar query() en lugar de prepare() para evitar errores en Railway
+        $codigo_esc = $conn->real_escape_string($codigo);
+        $res = $conn->query("SELECT id, nombre_empleado, codigo_empleado, rol FROM empleados WHERE codigo_empleado = '$codigo_esc'");
+        
+        if ($res && $res->num_rows === 1) {
+            $row = $res->fetch_assoc();
+            $res->free();
+            limpiar_resultados_login($conn);
 
             if ($row['rol'] === 'empleado') {
                 $ip = getRealIP();
@@ -107,6 +123,8 @@ class LoginSystem {
             $ip = getRealIP();
             registrar_actividad($conn, 'login', $codigo, 
                 "❌ Intento fallido de acceso a Quiebras - Código incorrecto | IP: {$ip}", $ip);
+            if ($res) $res->free();
+            limpiar_resultados_login($conn);
             return ['success' => false, 'mensaje' => 'Código incorrecto.'];
         }
     }
@@ -117,7 +135,6 @@ class LoginSystem {
         
         // Guardar datos en sesión (para módulos sin código)
         if (!isset($_SESSION['nombre_empleado'])) {
-            // Para módulos que no requieren código, usar un identificador genérico
             $_SESSION['empleado'] = 'Empleado';
             $_SESSION['rol'] = 'empleado';
             $_SESSION['ip'] = $ip;
@@ -168,7 +185,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
     } else {
         $validacion = $login->validarAcceso($area);
         if ($validacion['success']) {
-            require_once dirname(__DIR__) . '/config/database.php';
             $login->iniciarSesion($area, $conn);
             $mensaje_exito = "Acceso autorizado. Redirigiendo…";
             echo "<script>
@@ -273,21 +289,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
             </div>
             <div class="body">
                 <?php if ($mostrar_codigo_quiebras): ?>
-                    <!-- FORMULARIO CÓDIGO QUIEBRAS -->
                     <form method="POST" id="quiebrasForm">
                         <input type="hidden" name="area" value="registro_quiebras.php">
                         <div class="group">
                             <label for="codigo_quiebras"><i class="bi bi-key"></i> Código de Empleado</label>
                             <div class="input">
                                 <input type="password" id="codigo_quiebras" name="codigo_quiebras" placeholder="••••••••" required autocomplete="off">
-                                <button type="button" class="toggle" onclick="togglePassword('codigo_quiebras')"><i class="fas fa-eye" id="eye-codigo"></i></button>
+                                <button type="button" class="toggle" onclick="togglePassword('codigo_quiebras')"><i class="fas fa-eye" id="eye-codigo_quiebras"></i></button>
                             </div>
                         </div>
                         <button type="submit" class="btn"><i class="bi bi-box-arrow-in-right"></i> VERIFICAR CÓDIGO</button>
                         <button type="button" class="btn" style="margin-top:10px; background:#6c757d;" onclick="window.location.href='login.php'"><i class="bi bi-arrow-left"></i> VOLVER</button>
                     </form>
                 <?php else: ?>
-                    <!-- FORMULARIO SELECCIÓN DE MÓDULO -->
                     <form method="POST" id="loginForm">
                         <div class="group">
                             <label for="area"><i class="bi bi-grid-3x3-gap-fill"></i> Módulo</label>
@@ -319,7 +333,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
         <p>Desarrollado por: <strong>Nestor Rosales</strong> | Rosales_Dev91</p>
     </div>
 
-    <!-- Botones flotantes -->
     <a href="https://wa.me/50672360749?text=Hola, tengo una consulta" target="_blank" class="whatsapp-btn">
         <i class="bi bi-whatsapp"></i> Soporte
     </a>
@@ -334,7 +347,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
         .whatsapp-btn:hover,.odoo-message-btn:hover{transform:translateY(-3px);box-shadow:0 6px 16px rgba(0,0,0,.4)}
     </style>
 
-    <!-- Web Worker partículas -->
     <script>
         const workerCode = `
             let particles=[],w,h,ctx;
@@ -355,9 +367,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
 
         function togglePassword(id){
             const input=document.getElementById(id);
-            const icon=document.getElementById('eye-'+id.split('_')[1]);
-            input.type=input.type==='password'?'text':'password';
-            icon.classList.toggle('fa-eye');icon.classList.toggle('fa-eye-slash');
+            const icon=document.getElementById('eye-'+id);
+            if(input.type==='password'){
+                input.type='text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type='password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
         }
 
         function actualizarReloj(){
@@ -370,7 +389,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
         }
         setInterval(actualizarReloj,1000); actualizarReloj();
 
-        // Enfocar el primer campo
         requestIdleCallback(() => {
             const select = document.querySelector('select');
             const input = document.querySelector('input[required]');
@@ -378,7 +396,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['codigo_quiebras'])) {
             else if(input) input.focus();
         });
         
-        // Prevenir envío duplicado
         let enviando = false;
         document.querySelectorAll('form').forEach(form => {
             form.addEventListener('submit', function(e) {
