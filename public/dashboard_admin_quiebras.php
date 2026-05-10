@@ -867,21 +867,25 @@ th, td {
                             <?php foreach ($filas as $row): ?>
                                 <tr>
                                     <td><?= htmlspecialchars($row['id']) ?></td>
-                                    <td><?= htmlspecialchars($row['empleado_registro']) ?></td>
-                                    <td><?= htmlspecialchars($row['orden']) ?></td>
-                                    <td><?= htmlspecialchars($row['turno']) ?></td>
-                                    <td><?= htmlspecialchars($row['responsable']) ?></td>
-                                    <td><?= htmlspecialchars($row['empleado']) ?></td>
-                                    <td><?= htmlspecialchars($row['equipo']) ?></td>
-                                    <td><?= htmlspecialchars($row['motivo']) ?></td>
-                                    <td><?= htmlspecialchars($row['porque_defecto']) ?></td>
-                                    <td><?= htmlspecialchars($row['lado_lente']) ?></td>
+                                   <td><?= htmlspecialchars($row['empleado_registro'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['orden'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['turno'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['responsable'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['empleado'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['equipo'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['motivo'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['porque_defecto'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['lado_lente'] ?? '') ?></td>
                                     <td>
-                                        <?php 
-                                            $fechaCompleta = $row['fecha'] . ' ' . ($row['hora'] ?? '00:00:00');
-                                            echo date('d-m-Y h:i:s A', strtotime($fechaCompleta));
-                                        ?>
-                                    </td>
+     <?php 
+        $fechaCompleta = ($row['fecha'] ?? '') . ' ' . ($row['hora'] ?? '00:00:00');
+        if (!empty($row['fecha'])) {
+            echo date('d-m-Y h:i:s A', strtotime($fechaCompleta));
+        } else {
+            echo 'No registrada';
+        }
+    ?>
+</td>
                                     <td>
                                         <form method="POST" data-orden="<?= htmlspecialchars($row['id']) ?>">
                                             <input type="hidden" name="eliminar_quiebra_id" value="<?= htmlspecialchars($row['id']) ?>">
