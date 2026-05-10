@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/config/database.php';
+
 if (!class_exists('FPDF')) {
     require_once(__DIR__ . '/fpdf/fpdf.php');
 }
@@ -45,25 +47,29 @@ class PDF_Code39 extends FPDF
     }
 }
 
-$conexion = new mysqli("localhost", "root", "", "produccion_quiebras");
-if ($conexion->connect_error) {
-    die("Conexión fallida: " . $conexion->connect_error);
-}
+// Usar la conexión de database.php en lugar de crear una nueva
+global $conn;
 
 $empleados = [];
-$r = $conexion->query("SELECT nombre_empleado FROM empleados ORDER BY nombre_empleado");
-while ($row = $r->fetch_assoc()) $empleados[] = $row['nombre_empleado'];
-$r->free();
+$r = $conn->query("SELECT nombre_empleado FROM empleados ORDER BY nombre_empleado");
+if ($r) {
+    while ($row = $r->fetch_assoc()) $empleados[] = $row['nombre_empleado'];
+    $r->free();
+}
 
 $insumos = [];
-$r = $conexion->query("SELECT producto, codigo_barras FROM insumos_laboratorio ORDER BY producto");
-while ($row = $r->fetch_assoc()) $insumos[] = ['producto' => $row['producto'], 'codigo' => $row['codigo_barras']];
-$r->free();
+$r = $conn->query("SELECT producto, codigo_barras FROM insumos_laboratorio ORDER BY producto");
+if ($r) {
+    while ($row = $r->fetch_assoc()) $insumos[] = ['producto' => $row['producto'], 'codigo' => $row['codigo_barras']];
+    $r->free();
+}
 
 $suministros = [];
-$r = $conexion->query("SELECT producto, codigo_barras FROM suministros_oficina ORDER BY producto");
-while ($row = $r->fetch_assoc()) $suministros[] = ['producto' => $row['producto'], 'codigo' => $row['codigo_barras']];
-$r->free();
+$r = $conn->query("SELECT producto, codigo_barras FROM suministros_oficina ORDER BY producto");
+if ($r) {
+    while ($row = $r->fetch_assoc()) $suministros[] = ['producto' => $row['producto'], 'codigo' => $row['codigo_barras']];
+    $r->free();
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     ob_start();
@@ -74,12 +80,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $cantidades = isset($_POST["cantidades"]) ? json_decode($_POST["cantidades"], true) : [];
 
     // Validar que el solicitante exista en la base de datos
-    $stmt_validar = $conexion->prepare("SELECT COUNT(*) FROM empleados WHERE nombre_empleado = ?");
-    $stmt_validar->bind_param("s", $solicitante);
-    $stmt_validar->execute();
-    $stmt_validar->bind_result($existe);
-    $stmt_validar->fetch();
-    $stmt_validar->close();
+    $stmt_validar = $conn->prepare("SELECT COUNT(*) FROM empleados WHERE nombre_empleado = ?");
+    if ($stmt_validar) {
+        $stmt_validar->bind_param("s", $solicitante);
+        $stmt_validar->execute();
+        $stmt_validar->bind_result($existe);
+        $stmt_validar->fetch();
+        $stmt_validar->close();
+    } else {
+        $existe = false;
+    }
 
     if (!$existe) {
         die("El solicitante no existe en la base de datos. Por favor seleccione un nombre válido de la lista.");
@@ -90,14 +100,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     // Insertar pedido general
-    $stmt_pedido = $conexion->prepare("INSERT INTO pedidos (solicitante, motivo_solicitud) VALUES (?, ?)");
+    $stmt_pedido = $conn->prepare("INSERT INTO pedidos (solicitante, motivo_solicitud) VALUES (?, ?)");
     if (!$stmt_pedido) {
-        die("Error en preparación de consulta de pedido: " . $conexion->error);
+        die("Error en preparación de consulta de pedido: " . $conn->error);
     }
     $stmt_pedido->bind_param("ss", $solicitante, $motivo);
     $stmt_pedido->execute();
 
-    $pedido_id = $conexion->insert_id;
+    $pedido_id = $conn->insert_id;
     $stmt_pedido->close();
 
     if ($pedido_id <= 0) {
@@ -105,9 +115,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     // Insertar detalles
-    $stmt_detalle = $conexion->prepare("INSERT INTO detalle_pedido (pedido_id, producto, codigo_barras, cantidad) VALUES (?, ?, ?, ?)");
+    $stmt_detalle = $conn->prepare("INSERT INTO detalle_pedido (pedido_id, producto, codigo_barras, cantidad) VALUES (?, ?, ?, ?)");
     if (!$stmt_detalle) {
-        die("Error en preparación de consulta de detalle: " . $conexion->error);
+        die("Error en preparación de consulta de detalle: " . $conn->error);
     }
 
     $productos_finales = [];
@@ -268,10 +278,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         min-height: 100vh;
         display: flex;
         flex-direction: column;
-        padding-bottom: 80px; /* Espacio para el footer */
+        padding-bottom: 80px;
     }
 
-    /* Header */
     .header {
         background: rgba(0, 51, 0, 0.95);
         backdrop-filter: blur(10px);
@@ -327,14 +336,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
     }
 
-    /* Main Container */
     .main-container {
         max-width: 1000px;
         margin: 30px auto;
         padding: 0 20px 60px;
     }
 
-    /* Cards */
     .card {
         background: rgba(255, 255, 255, 0.95);
         border-radius: var(--border-radius);
@@ -366,7 +373,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         color: var(--primary-dark);
     }
 
-    /* Form Styles */
     .form-group {
         margin-bottom: 20px;
     }
@@ -440,7 +446,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         box-shadow: 0 6px 20px rgba(220, 53, 69, 0.3);
     }
 
-    /* Radio buttons */
     .radio-group {
         display: flex;
         gap: 20px;
@@ -453,7 +458,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         gap: 8px;
     }
 
-    /* Tables */
     .table-container {
         background: var(--white);
         border-radius: var(--border-radius);
@@ -506,7 +510,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         transition: background-color 0.2s ease;
     }
 
-    /* Product search */
     .product-search {
         position: relative;
         margin-bottom: 15px;
@@ -519,7 +522,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         background-position: 12px center;
     }
 
-    /* Footer */
     .footer {
         background: linear-gradient(135deg, var(--dark-green), var(--primary-green));
         color: var(--light-green);
@@ -546,7 +548,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         opacity: 0.7;
     }
 
-    /* Support Buttons */
     .support-buttons {
         position: fixed;
         bottom: 90px;
@@ -594,7 +595,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 
-    /* Responsive Design */
     @media (max-width: 768px) {
         .main-container {
             padding: 0 15px 50px;
@@ -631,7 +631,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 </head>
 
 <body>
-    <!-- Header -->
     <header class="header">
         <div class="header-content">
             <div class="logo-container">
@@ -647,7 +646,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </header>
 
-    <!-- Main Container -->
     <div class="main-container">
         <h1 style="text-align: center; margin-bottom: 25px; color: var(--light-green);">Sistema de Pedidos</h1>
         
@@ -657,8 +655,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <h3>Nuevo Pedido</h3>
             </div>
             <p style="color: var(--primary-dark); margin-bottom: 20px; font-weight: 400;">
-  <h2 class="card-title" style="color: red; font-size: 20px;">ATENCION: Para la debida entrega de los productos como: lapiceros, marcadores, guantes, toallas cleanex, es necesario llevar el objeto vacio, de lo contrario no se les entregará. Gracias</h2>
-  <h2 class="card-title" style="color: red; font-size: 20px;">Para un mejor control se les solicita hacer pedidos de insumos y suministros por separado, y cada personal hacer su propio pedido.</h2>
+                <strong style="color: red;">ATENCION:</strong> Para la debida entrega de los productos como: lapiceros, marcadores, guantes, toallas cleanex, es necesario llevar el objeto vacio, de lo contrario no se les entregará. Gracias<br><br>
+                <strong style="color: red;">Para un mejor control se les solicita hacer pedidos de insumos y suministros por separado, y cada personal hacer su propio pedido.</strong>
             </p>
 
             <form method="POST" id="formPedido">
@@ -786,7 +784,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </div>
 
-    <!-- Support Buttons -->
     <div class="support-buttons">
         <a href="https://wa.me/50672360749?text=Hola, tengo una consulta acerca de" 
            target="_blank" 
@@ -805,7 +802,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </a>
     </div>
 
-    <!-- Footer -->
     <footer class="footer">
         <div>
             <i class="fas fa-cogs"></i>
@@ -818,12 +814,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     </footer>
 
     <script>
-        // Arrays con productos desde PHP
         const insumos = <?= json_encode($insumos); ?>;
         const suministros = <?= json_encode($suministros); ?>;
         const empleados = <?= json_encode($empleados); ?>;
         
-        let productos = insumos; // Valor inicial
+        let productos = insumos;
         let productosAgregados = [];
         
         const inputBusqueda = document.getElementById('productoBusqueda');
@@ -834,7 +829,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         const errorSolicitante = document.getElementById('error-solicitante');
         const formPedido = document.getElementById('formPedido');
 
-        // Validar que el solicitante exista en la base de datos
         function validarSolicitante() {
             const nombre = inputSolicitante.value.trim();
             const existe = empleados.includes(nombre);
@@ -887,7 +881,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             const tipoSeleccionado = document.querySelector('input[name="tipo_producto"]:checked').value;
             productos = (tipoSeleccionado === 'insumos') ? insumos : suministros;
             
-            // Limpiar input de búsqueda al cambiar tipo
             inputBusqueda.value = '';
             filtrarProductos();
         }
@@ -908,14 +901,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             const producto = JSON.parse(select.value);
             
-            // Verificar si el producto ya fue agregado
             const index = productosAgregados.findIndex(p => p.codigo === producto.codigo);
             
             if (index !== -1) {
-                // Producto ya existe, actualizar cantidad
                 productosAgregados[index].cantidad += cantidad;
             } else {
-                // Agregar nuevo producto
                 productosAgregados.push({
                     producto: producto.producto,
                     codigo: producto.codigo,
@@ -950,7 +940,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 });
             }
             
-            // Actualizar inputs ocultos para enviar datos en el formulario
             document.getElementById('productos_hidden').value = JSON.stringify(
                 productosAgregados.map(p => ({ producto: p.producto, codigo: p.codigo }))
             );
@@ -966,13 +955,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         function actualizarReloj() {
             const ahora = new Date();
-            
-            // Fecha
             const dia = String(ahora.getDate()).padStart(2, '0');
             const mes = String(ahora.getMonth() + 1).padStart(2, '0');
             const anio = ahora.getFullYear();
-            
-            // Hora
             const horas = String(ahora.getHours()).padStart(2, '0');
             const minutos = String(ahora.getMinutes()).padStart(2, '0');
             const segundos = String(ahora.getSeconds()).padStart(2, '0');
@@ -982,16 +967,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             document.getElementById('reloj').textContent = `${fecha} ${tiempo}`;
         }
         
-        // Inicialización
         document.addEventListener('DOMContentLoaded', () => {
             cambiarTipoProducto();
             setInterval(actualizarReloj, 1000);
             actualizarReloj();
             
-            // Escuchar cambios en input de búsqueda
             inputBusqueda.addEventListener('input', filtrarProductos);
             
-            // Limpiar formulario después de enviar
             document.querySelector('form').addEventListener('submit', function() {
                 setTimeout(() => {
                     document.getElementById('motivo').value = '';
