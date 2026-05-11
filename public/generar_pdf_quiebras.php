@@ -2,12 +2,40 @@
 session_start();
 require_once dirname(__DIR__) . '/config/database.php';
 
-// Ruta base para incluir librerías
-define('ROOT_PATH', $_SERVER['DOCUMENT_ROOT'] . '/control_produccion/public/');
+// Definir ROOT_PATH solo si no está definida
+if (!defined('ROOT_PATH')) {
+    // Detectar si estamos en Railway
+    if (getenv('RAILWAY_ENVIRONMENT') || !empty(getenv('MYSQL_HOST'))) {
+        // Estamos en Railway
+        define('ROOT_PATH', dirname(__DIR__) . '/public/');
+    } else {
+        // Entorno local
+        define('ROOT_PATH', $_SERVER['DOCUMENT_ROOT'] . '/control_produccion/public/');
+    }
+}
 
 // Incluir FPDF si no está cargado
 if (!class_exists('FPDF')) {
-    require_once(ROOT_PATH . 'fpdf/fpdf.php');
+    // Buscar FPDF en diferentes ubicaciones posibles
+    $fpdf_paths = [
+        ROOT_PATH . 'fpdf/fpdf.php',
+        dirname(__DIR__) . '/public/fpdf/fpdf.php',
+        dirname(__DIR__) . '/fpdf/fpdf.php',
+        __DIR__ . '/fpdf/fpdf.php'
+    ];
+    
+    $fpdf_encontrado = false;
+    foreach ($fpdf_paths as $path) {
+        if (file_exists($path)) {
+            require_once($path);
+            $fpdf_encontrado = true;
+            break;
+        }
+    }
+    
+    if (!$fpdf_encontrado) {
+        die("Error: No se encontró FPDF. Por favor, asegúrate de que la librería FPDF esté instalada.");
+    }
 }
 
 // Verificación CSRF
@@ -82,32 +110,61 @@ function obtenerDatosOrden($conn, $orden) {
 
 function generarPDF($registro, $numero_orden, $responsable, $comentarios_pdf) {
     date_default_timezone_set('America/Costa_Rica');
-    ob_clean();
+    
+    // Limpiar cualquier salida previa
+    if (ob_get_length()) {
+        ob_clean();
+    }
+    
+    // Configurar headers para PDF
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: inline; filename="Reporte_Quiebra_' . $numero_orden . '_' . date('Ymd_His') . '.pdf"');
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    header('Pragma: public');
 
     $pdf = new FPDF();
     $pdf->AddPage();
 
     $pageWidth = $pdf->GetPageWidth();
-    $logoPath = $_SERVER['DOCUMENT_ROOT'] . '/control_produccion/public/logo.png';
+    
+    // Buscar logo en múltiples ubicaciones posibles
+    $logoPaths = [
+        $_SERVER['DOCUMENT_ROOT'] . '/control_produccion/public/logo.png',
+        dirname(__DIR__) . '/public/logo.png',
+        __DIR__ . '/logo.png',
+        ROOT_PATH . 'logo.png'
+    ];
+    
+    $logoPath = null;
+    foreach ($logoPaths as $path) {
+        if (file_exists($path)) {
+            $logoPath = $path;
+            break;
+        }
+    }
+    
     $logoWidth = 55;
-
-    if (file_exists($logoPath)) {
+    if ($logoPath && file_exists($logoPath)) {
         $pdf->Image($logoPath, $pageWidth - $logoWidth - 8, 8, $logoWidth);
     }
 
     // Texto ID registro pequeño
-$pdf->SetFont('Arial', 'B', 8);
-$idRegistro = $registro['id'] ?? 'N/A';
-$pdf->Cell(0, 6, 'ID Registro: ' . $idRegistro, 0, 1, 'L');
+    $pdf->SetFont('Arial', 'B', 8);
+    $idRegistro = $registro['id'] ?? 'N/A';
+    $pdf->Cell(0, 6, 'ID Registro: ' . $idRegistro, 0, 1, 'L');
 
-// Dibuja código de barras con ID (asumiendo es numérico o alfanumérico compatible con Code39)
-if ($idRegistro !== 'N/A') {
-    $x = 10;      // Posición X del código barras (ajusta si quieres)
-    $y = $pdf->GetY(); // Posición Y actual para colocar código justo abajo del texto
-    Code39($pdf, $x, $y, $idRegistro, 0.6, 15);
-    $pdf->Ln(20); // Espacio después del código barras
-}
-
+    // Dibuja código de barras con ID
+    if ($idRegistro !== 'N/A') {
+        $x = 10;
+        $y = $pdf->GetY();
+        try {
+            Code39($pdf, $x, $y, (string)$idRegistro, 0.6, 15);
+        } catch (Exception $e) {
+            // Si hay error con código de barras, continuar sin él
+            error_log("Error en código de barras: " . $e->getMessage());
+        }
+        $pdf->Ln(20);
+    }
 
     // Título principal
     $pdf->SetFont('Arial', 'B', 10);
@@ -116,7 +173,7 @@ if ($idRegistro !== 'N/A') {
 
     $pdf->Ln(2);
 
-    // Datos responsables y fecha - fuente 9
+    // Datos responsables y fecha
     $pdf->SetFont('Arial', 'B', 9);
     $pdf->Cell(0, 6, 'Ingresado por: ' . $responsable, 0, 1);
     $pdf->Cell(0, 6, 'Fecha: ' . date("Y-m-d h:i:s A"), 0, 1);
@@ -125,25 +182,25 @@ if ($idRegistro !== 'N/A') {
 
     // Tabla detalles - encabezado verde
     $pdf->SetFont('Arial', 'B', 9);
-    $pdf->SetFillColor(0, 153, 0); // verde
-    $pdf->SetTextColor(255); // blanco
+    $pdf->SetFillColor(0, 153, 0);
+    $pdf->SetTextColor(255);
     $pdf->Cell(50, 7, 'Campo', 1, 0, 'C', true);
     $pdf->Cell(140, 7, 'Detalle', 1, 1, 'C', true);
 
     // Texto negro para celdas
     $pdf->SetTextColor(0);
-    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetFont('Arial', '', 8);
 
-    // Campos como en tu código original
+    // Campos
     $campos = [
         'Orden' => $numero_orden,
         'Turno' => $registro['turno'] ?? 'N/A',
         'Responsable' => $registro['responsable'] ?? 'N/A',
         'Empleado' => $registro['empleado'] ?? 'N/A',
-        'Equipo' => trim($registro['equipo']) ?: 'N/A',
+        'Equipo' => trim($registro['equipo'] ?? '') ?: 'N/A',
         'Área' => $registro['area'] ?? 'N/A',
         'Motivo' => $registro['motivo'] ?? 'N/A',
-        'Porque defecto (Raiz)' => trim($registro['porque_defecto']) ?: 'N/A',
+        'Porque defecto (Raiz)' => trim($registro['porque_defecto'] ?? '') ?: 'N/A',
         'Tipo Lente' => $registro['tipo_lente'] ?? 'N/A',
         'Lado Lente' => $registro['lado_lente'] ?? 'N/A',
         'Tipo montaje' => $registro['tipo_montaje'] ?? 'N/A',
@@ -171,13 +228,13 @@ if ($idRegistro !== 'N/A') {
     $pdf->Cell(42.5, 6, utf8_decode('Adición'), 1, 0, 'C', true);
     $pdf->Cell(42.5, 6, 'Base', 1, 1, 'C', true);
 
-    // Valores graduación (usar variable con valor o 'N/A')
+    // Valores graduación
     $valores_graduacion = [
         ['OD', $registro['esfera_od'] ?? 'N/A', $registro['cilindro_od'] ?? 'N/A', $registro['adicion_od'] ?? 'N/A', $registro['base_od'] ?? 'N/A'],
         ['OI', $registro['esfera_oi'] ?? 'N/A', $registro['cilindro_oi'] ?? 'N/A', $registro['adicion_oi'] ?? 'N/A', $registro['base_oi'] ?? 'N/A'],
     ];
 
-    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetFont('Arial', '', 8);
     $pdf->SetTextColor(0);
     foreach ($valores_graduacion as $fila) {
         foreach ($fila as $idx => $valor) {
@@ -189,34 +246,33 @@ if ($idRegistro !== 'N/A') {
 
     $pdf->Ln(5);
 
-    // Comentarios - fuente 9, altura 6 para MultiCell
+    // Comentarios
     $pdf->SetFont('Arial', 'B', 9);
     $pdf->Cell(0, 6, 'Comentario de la quiebra:', 0, 1);
-    $pdf->SetFont('Arial', 'B', 8);
-    $pdf->MultiCell(0, 6, utf8_decode($comentarios_pdf), 1);
+    $pdf->SetFont('Arial', '', 8);
+    $pdf->MultiCell(0, 6, utf8_decode($comentarios_pdf ?: 'Sin comentarios'), 1);
 
     $pdf->Ln(5);
 
-    // Firmas - fuente 9
+    // Firmas
     $pdf->SetFont('Arial', 'B', 9);
     $pdf->Cell(95, 7, utf8_decode('Firma supervisión: ____________________'), 0, 0, 'L');
     $pdf->Cell(95, 7, utf8_decode('Firma responsable: ____________________'), 0, 1, 'L');
 
     // Salida del PDF
-   $nombreArchivo = 'Reporte_Quiebra_' . $numero_orden . '_' . date('Ymd_His') . '.pdf';
-   $pdf->Output('I', $nombreArchivo);
+    $nombreArchivo = 'Reporte_Quiebra_' . $numero_orden . '_' . date('Ymd_His') . '.pdf';
+    $pdf->Output('I', $nombreArchivo);
     exit;
 }
 
 // --- EJECUCIÓN ---
 try {
-    // Validación de CSRF
-    if (!function_exists('verificarTokenCSRF')) {
-        function verificarTokenCSRF() {
-            // Aquí puedes colocar tu validación real si la usas
-            return true;
-        }
+    // Verificar conexión a BD
+    if (!isset($conn) || $conn->connect_error) {
+        throw new Exception("Error de conexión a la base de datos");
     }
+    
+    // Validación de CSRF
     verificarTokenCSRF();
 
     $numero_orden = $_GET['orden'] ?? null;
@@ -236,6 +292,18 @@ try {
 
 } catch (Exception $e) {
     error_log("Error al generar el PDF: " . $e->getMessage());
-    echo "Hubo un problema al generar el reporte. Intenta nuevamente más tarde.";
+    
+    // Limpiar cualquier salida previa
+    if (ob_get_length()) {
+        ob_clean();
+    }
+    
+    header('Content-Type: text/html; charset=utf-8');
+    echo "<div style='font-family:Arial;padding:20px;color:#d32f2f;'>
+            <h2>Error al generar el reporte</h2>
+            <p>" . htmlspecialchars($e->getMessage()) . "</p>
+            <p>Intenta nuevamente más tarde.</p>
+          </div>";
+    exit;
 }
 ?>
